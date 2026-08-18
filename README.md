@@ -1,8 +1,7 @@
 # Registro de Acceso — Reservas
 
-Captura los datos de los huéspedes (nombre y placas) a partir de las fotos que
-mandan por el chat de Airbnb, y genera el mensaje listo para el grupo de
-seguridad del edificio.
+Convierte lo que los huéspedes mandan por el chat de Airbnb — texto o fotos —
+en el mensaje que el equipo de seguridad del edificio espera recibir.
 
 **Todo el procesamiento ocurre en el dispositivo.** No hay servidor, no hay
 cuenta, no hay API key y no hay costo por uso. La foto de la identificación
@@ -10,16 +9,63 @@ nunca sale de la computadora o el celular donde se abre la aplicación.
 
 ---
 
-## El problema que resuelve
+## Qué produce
 
-El flujo manual toma unos 5 minutos por reserva:
+Entrada: el texto copiado del chat de Airbnb, o fotos (capturas del chat,
+credenciales, o la pantalla de un celular mostrando una identificación).
 
-1. El huésped manda foto de su identificación por el chat de Airbnb
-2. Se transcribe el nombre y las placas a un bloc de notas
-3. Se reescribe con formato y se pega en el grupo de WhatsApp de seguridad
+Salida, lista para copiar o mandar por WhatsApp:
 
-Con esta herramienta son unos 30 segundos: se sube la foto, se revisa lo que
-leyó el OCR y se toca **Copiar** o **WhatsApp**.
+```
+Departamento 606 Torre 2
+Fechas: 16-17 agosto
+Responsable: Ana Ruiz
+Otros huéspedes:
+Luis Ruiz
+Diego Andres Castillo
+Placas: No traen auto
+```
+
+El formato es configurable en **Ajustes**; el de arriba es el que ya se usaba
+a mano, para que el equipo de seguridad no tenga que acostumbrarse a nada.
+
+---
+
+## Dos formas de capturar
+
+**Pegar texto (principal).** Se copia el mensaje del chat de Airbnb y se pega
+en la aplicación — con `Ctrl+V` en cualquier parte de la página, sin apuntarle
+a ninguna caja. El texto copiado llega sin errores, así que este camino es
+mucho más exacto que la foto: no hay ninguna letra que adivinar. De ahí salen
+las placas, el vehículo, el aviso de que no llevan coche y el nombre de quien
+escribe.
+
+Hay dos botones porque son dos cosas distintas:
+
+- **Leer datos** — analiza el mensaje del huésped y agrega una persona.
+- **Solo son nombres** — trata cada renglón como una persona distinta. Sirve
+  para la lista de acompañantes; entiende viñetas, numeración y encabezados
+  como «Otros huéspedes:», y descarta lo que claramente no es un nombre.
+
+**Leer desde foto (respaldo).** Para cuando solo llega la imagen de la
+identificación. Usa OCR local; la orientación se detecta sola.
+
+## Qué documentos entiende
+
+Medido contra fotos reales de huéspedes, no contra casos ideales:
+
+- **Licencias de conducir de Estados Unidos** — etiquetas `LN`/`FN`, número de
+  licencia, fecha de nacimiento. Es lo que más llega en la práctica.
+- **Credenciales INE** — nombre en tres renglones, CURP, clave de elector.
+- **Pasaportes** — vía la MRZ (las dos líneas con `<<<`), que trae dígitos
+  verificadores por campo.
+- **Capturas del chat de Airbnb** — de ahí salen datos que no están en ningún
+  documento: quién reservó, las placas cuando el huésped las escribe
+  (`"Nissan Versa 2022, placas: ABC 123 D"`) y el aviso de que no llevan coche
+  (`"we won't be bringing a car"`, `"no traen auto"`).
+
+La orientación se detecta sola: las credenciales fotografiadas de lado se leen
+igual que las derechas.
 
 ---
 
@@ -56,14 +102,15 @@ sigue siendo local.
 
 ## Cómo se usa
 
-**1 · Fotos** — Sube la identificación y, si vinieron aparte, la foto de las
-placas. Se puede arrastrar, elegir del carrete o pegar con `Ctrl+V`. El botón
-`↻` gira las fotos que llegaron de lado.
+**1 · Datos de la reserva** — Unidad, fechas y vehículo. Si el huésped avisó
+que no lleva coche, la casilla se marca sola al leer la captura del chat.
 
-**2 · Revisa** — El OCR llena los campos. Los que necesitan atención salen
-resaltados en ámbar con el motivo arriba. Se corrige lo que haga falta.
+**2 · Personas que ingresan** — Una reserva agrupa a todas las personas que
+entran juntas. Cada texto pegado o foto leída agrega una persona a la lista.
+El botón de radio marca quién es el **responsable**; el resto quedan como
+acompañantes. También se puede agregar a alguien a mano.
 
-**3 · Envía** — `📋 Copiar` deja el mensaje en el portapapeles.
+**3 · Mensaje** — `📋 Copiar` deja el texto en el portapapeles.
 `💬 Abrir WhatsApp` abre la app con el mensaje ya escrito.
 
 > WhatsApp **no permite** que un enlace apunte a un grupo específico: es una
@@ -71,16 +118,40 @@ resaltados en ámbar con el motivo arriba. Se corrige lo que haga falta.
 > con el texto listo y se elige el grupo de seguridad. Son dos toques y cero
 > escritura.
 
-**Registro** — Historial con búsqueda, exportación a CSV y un **resumen del
-día**: una sola lista con todas las entradas de la fecha, que suele ser lo que
-más le sirve al equipo en la caseta.
-
-**Ajustes** — Plantilla del mensaje, lista de propiedades, teléfono de
-seguridad y política de retención.
+**Registro** — Historial con búsqueda, exportación a CSV (una fila por
+persona) y un **resumen del día**: una sola lista con todas las entradas de la
+fecha, que suele ser lo que más le sirve al equipo en la caseta.
 
 ---
 
-## Verificaciones automáticas que hace la app
+## Precisión real
+
+Medida sobre siete fotos reales de huéspedes — comprimidas por WhatsApp, de
+360 a 960 px de ancho, algunas fotografiadas de la pantalla de otro celular:
+
+| Dato | Resultado |
+|---|---|
+| Número de documento correcto | 6 / 6 |
+| Nombre completo y exacto | 4 / 7 |
+| Nombre exacto o parcial | 6 / 7 |
+| Nombre **incorrecto** | 0 / 7 |
+| Placas inventadas | 0 / 7 |
+| "No traen auto" detectado | 7 / 7 |
+
+Las dos últimas filas importan más que las demás. **La herramienta prefiere
+dejar un campo vacío antes que llenarlo con algo que no leyó bien**, porque un
+nombre o unas placas equivocadas en el mensaje a seguridad son peores que un
+hueco que la persona completa en cinco segundos.
+
+Esa decisión tiene una historia concreta: en la primera versión, el número de
+licencia `5550448` se "corregía" hasta convertirse en las placas `SSS-044-B`,
+que nadie había escrito nunca. Hoy las placas solo se aceptan si vienen
+anunciadas por una palabra como *placas:* o si el texto no es una
+identificación, y las correcciones de OCR tienen un tope de dos caracteres.
+
+---
+
+## Verificaciones automáticas
 
 El OCR se equivoca; lo que evita que sus errores lleguen a seguridad son estas
 comprobaciones deterministas:
@@ -88,35 +159,31 @@ comprobaciones deterministas:
 - **Dígito verificador del CURP** — El CURP trae un carácter de control
   calculado a partir de los otros 17. Solo 1 de cada 10 valores posibles
   valida, así que un CURP que pasa esta prueba está bien leído casi con
-  certeza. Se muestra en vivo: `✓ válido · 15/03/1995 · Mujer`.
+  certeza.
 
 - **Cruce nombre ↔ CURP** — Las primeras 4 letras del CURP son las iniciales
   de los apellidos y el nombre. Si el nombre leído no concuerda, la app avisa
   que uno de los dos está mal. (Contempla la regla de RENAPO que salta MARIA y
   JOSE, y las partículas tipo *DE LA*.)
 
-- **MRZ de pasaportes** — Las dos líneas con `<<<` siguen el estándar ICAO 9303
-  y cada campo trae su propio dígito verificador. Es la lectura más confiable
-  que existe, y la app dice exactamente qué campo falló si alguno no cuadra.
+- **MRZ de pasaportes** — Estándar ICAO 9303, con dígito verificador por campo.
+  Es la lectura más confiable que existe, y la app dice exactamente qué campo
+  falló si alguno no cuadra.
 
 - **Formatos de placas** — Se contrastan contra los patrones mexicanos
-  conocidos. Si la lectura no encaja en ninguno, se corrigen las confusiones
-  típicas del OCR (`O`↔`0`, `I`↔`1`, `S`↔`5`) en las posiciones donde el patrón
-  exige letra o dígito, y se marca para confirmación.
+  conocidos, con las salvaguardas descritas arriba.
+
+- **Filtro de nombres** — Descarta fragmentos como `SEN E` o etiquetas de la
+  credencial (`CLASS`, `NONE`, `END`) que el OCR produce con fotos muy
+  comprimidas.
 
 ---
 
-## Qué tan preciso es
+## Si la precisión no alcanza
 
-En fotos limpias y bien iluminadas la extracción es fiable. En fotos de celular
-tomadas de reojo, con reflejo del holograma o dobladas, la precisión baja
-bastante — es la limitación real de Tesseract frente a un modelo de visión.
-
-**El diseño asume esto**: el OCR *pre-llena* y la persona *confirma*. Aunque
-solo acierte la mitad de los campos, se pasa de teclear cuatro a corregir uno,
-y la persona ya está viendo la foto de todos modos.
-
-Si en la práctica la precisión resulta insuficiente, hay dos rutas de mejora:
+La arquitectura está preparada para cambiar de motor: solo se sustituye
+[js/ocr.js](js/ocr.js). El resto —validaciones, plantillas, registro— no se
+toca, porque `analizarTexto()` recibe texto sin importar de dónde venga.
 
 | Opción | Costo | Precisión | Sigue siendo local |
 |---|---|---|---|
@@ -124,9 +191,55 @@ Si en la práctica la precisión resulta insuficiente, hay dos rutas de mejora:
 | Modelo de visión local vía [Ollama](https://ollama.com) | $0 + GPU decente | alta | sí |
 | Claude Opus 5 con visión | ~$0.02 USD por foto | muy alta | no |
 
-La arquitectura está preparada para el cambio: solo se sustituye el motor en
-[js/ocr.js](js/ocr.js). El resto —validaciones, plantillas, registro— no se
-toca, porque `analizarTexto()` recibe texto sin importar de dónde venga.
+La palanca más barata, sin embargo, no es técnica: **pedir los datos escritos**
+en vez de fotografiados. Un mensaje escrito se copia y se pega, y entonces no
+hay OCR de por medio ni nada que pueda leerse mal.
+
+---
+
+## La plantilla de Airbnb
+
+La precisión de la herramienta depende de cómo esté redactada la respuesta
+automática que se le manda al huésped. Esta versión pide los datos en un
+formato que se pega de una sola vez:
+
+```
+Hola {Guest first name}, gracias por tu reserva.
+
+Para poder registrarte con seguridad del edificio y agilizar tu entrada,
+te pido estos datos antes de tu llegada. Puedes responder copiando estas
+líneas y llenándolas:
+
+Nombre completo de cada persona que ingresa:
+1.
+2.
+3.
+
+Placas del auto (escríbelas, ejemplo: ABC-123-D):
+
+Auto (marca, modelo y color):
+
+Si no traen auto, solo responde "No traemos auto".
+
+Adjunta también una foto de identificación de cada persona.
+
+Estos datos se comparten únicamente con el personal de seguridad del
+edificio para autorizar tu acceso, y se eliminan después de tu estancia.
+```
+
+Dos detalles que importan:
+
+- **El ejemplo de placa no envenena el dato.** Los huéspedes suelen responder
+  citando la plantilla completa, así que el `ABC-123-D` viaja en el texto.
+  El analizador reconoce que va precedido de «ejemplo:» y lo ignora; si el
+  huésped devuelve la plantilla sin llenar, el campo queda vacío en vez de
+  copiar la muestra. Hay pruebas de regresión para esto en
+  [test/documentos-reales.test.mjs](test/documentos-reales.test.mjs).
+- **La lista numerada se convierte en personas** con el botón *Solo son
+  nombres*, sin tocar nada más.
+
+También conviene **programar la plantilla** para que salga sola al confirmarse
+la reserva, en vez de mandarla a mano.
 
 ---
 
@@ -136,11 +249,12 @@ Se manejan datos personales de identificación, así que las decisiones de dise�
 van en esa dirección:
 
 - **Las fotos nunca se guardan.** Viven en memoria durante la captura y se
-  liberan al tocar *Empezar otro*. No se escriben a disco ni a la base de datos.
+  liberan en cuanto se agrega la persona a la reserva. No se escriben a disco
+  ni a la base de datos.
 - **Solo se guarda el texto extraído**, en el navegador del dispositivo
   (IndexedDB). No hay servidor donde pueda filtrarse.
-- **Borrado automático** por antigüedad, configurable (30 días por defecto), que
-  se ejecuta solo al abrir la app.
+- **Borrado automático** por antigüedad, configurable (30 días por defecto),
+  que se ejecuta solo al abrir la app.
 
 ### Recomendación para el uso real
 
@@ -163,14 +277,17 @@ index.html                    interfaz completa (3 pestañas)
 css/styles.css                estilos, móvil primero, claro y oscuro
 js/
   app.js                      orquestación y estado
-  ocr.js                      Tesseract WASM + preprocesado en canvas
-  parsers.js                  CURP, MRZ, clave de elector, placas  ← lógica pura
-  format.js                   plantillas, enlace de WhatsApp, CSV
+  ocr.js                      Tesseract WASM, rotación automática, preprocesado
+  parsers.js                  licencias, INE, MRZ, placas, contexto del chat
+  format.js                   plantillas, rango de fechas, WhatsApp, CSV
   store.js                    IndexedDB y ajustes
 scripts/
   vendorizar-ocr.mjs          descarga el motor de OCR a vendor/
   generar-iconos.mjs          genera los PNG del PWA
-test/                         pruebas de parsers.js y format.js
+test/
+  parsers.test.mjs            CURP, MRZ, formatos de placas
+  documentos-reales.test.mjs  texto real del OCR de las fotos de huéspedes
+  format.test.mjs             composición del mensaje y del resumen
 sw.js                         service worker (modo sin conexión)
 ```
 
@@ -178,17 +295,23 @@ sw.js                         service worker (modo sin conexión)
 por eso son las que están cubiertas por pruebas.
 
 ```bash
-npm test    # 36 pruebas
+npm test    # 75 pruebas
 ```
+
+`documentos-reales.test.mjs` merece una nota: sus casos son transcripciones
+literales de lo que Tesseract devolvió con las fotos reales, ruido incluido.
+Fijan el comportamiento frente al material que de verdad llega, y cada bug
+corregido dejó ahí su prueba de regresión.
 
 ---
 
 ## Siguientes pasos posibles
 
 - **Formulario para el huésped** — Un enlace único por reserva que el huésped
-  abre y llena él mismo. Elimina la transcripción por completo; el trabajo lo
-  hace quien tiene los datos. Reutiliza los mismos parsers.
+  abre y llena él mismo, subiendo su identificación y escribiendo sus placas.
+  Elimina la transcripción por completo; el trabajo lo hace quien tiene los
+  datos. Reutiliza los mismos parsers.
 - **Motor de visión local** vía Ollama, si la precisión de Tesseract se queda
   corta.
-- **Lectura del código de barras PDF417** del reverso de la INE, que contiene
-  los datos ya digitalizados y evitaría el OCR del frente.
+- **Lectura del código PDF417** del reverso de las licencias estadounidenses y
+  de la INE, que contiene los datos ya digitalizados y evitaría el OCR.

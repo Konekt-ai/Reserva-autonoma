@@ -4,6 +4,11 @@
 // La estrategia es "confiar pero verificar": el OCR propone, estas funciones
 // validan con dígitos verificadores y coherencia interna, y devuelven un nivel
 // de confianza para que la UI sepa qué resaltar para revisión humana.
+//
+// Los documentos reales que llegan por el chat de Airbnb son variados:
+// licencias de California, credenciales INE, pasaportes, y muchas veces
+// capturas de pantalla del propio chat donde el dato importante (las placas)
+// viene escrito en el mensaje, no en la identificación.
 
 // ---------------------------------------------------------------------------
 // Utilidades de normalización
@@ -22,14 +27,34 @@ export function limpiarEspacios(texto) {
   return (texto || '').replace(/\s+/g, ' ').trim();
 }
 
-// Confusiones típicas del OCR. Se usan para generar variantes de un token
-// cuando la primera lectura no cuadra con ningún patrón conocido.
+// Partículas de apellido que por convención van en minúscula.
+const PARTICULAS_MINUSCULA = new Set(['DE', 'DEL', 'LA', 'LAS', 'LOS', 'Y', 'VAN', 'VON', 'DA', 'DI']);
+
+/**
+ * Convierte un nombre a capitalización de título.
+ *
+ * Las credenciales imprimen los nombres en mayúsculas, así que el OCR siempre
+ * los devuelve gritando. El mensaje a seguridad se lee mucho mejor con
+ * "Luis Ruiz" que con "LUIS RUIZ", y así queda igual al formato que la
+ * clienta ya escribía a mano.
+ */
+export function capitalizarNombre(nombre) {
+  const palabras = limpiarEspacios(nombre).split(' ').filter(Boolean);
+
+  return palabras.map((palabra, i) => {
+    const mayus = palabra.toUpperCase();
+    // Las partículas van en minúscula, salvo que abran el nombre.
+    if (i > 0 && PARTICULAS_MINUSCULA.has(mayus)) return mayus.toLowerCase();
+    return mayus.charAt(0) + mayus.slice(1).toLowerCase();
+  }).join(' ');
+}
+
+// Confusiones típicas del OCR. Se usan para corregir un token cuando encaja
+// casi con un patrón conocido — nunca de forma indiscriminada (ver extraerPlacas).
 const CONFUSIONES_A_DIGITO = { O: '0', Q: '0', D: '0', I: '1', L: '1', Z: '2', S: '5', B: '8', G: '6', T: '7' };
 const CONFUSIONES_A_LETRA = { '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G', '7': 'T' };
 
-/** Fuerza un carácter a dígito si el OCR probablemente lo confundió. */
 function aDigito(c) { return CONFUSIONES_A_DIGITO[c] ?? c; }
-/** Fuerza un carácter a letra si el OCR probablemente lo confundió. */
 function aLetra(c) { return CONFUSIONES_A_LETRA[c] ?? c; }
 
 // ---------------------------------------------------------------------------
@@ -63,8 +88,7 @@ export function digitoVerificadorCurp(curp17) {
 
 /**
  * Valida un CURP completo: forma, entidad federativa, fecha coherente y
- * dígito verificador. Un CURP que pasa esto es correcto con altísima certeza,
- * lo cual nos permite confiar en el resto de la lectura.
+ * dígito verificador. Un CURP que pasa esto es correcto con altísima certeza.
  */
 export function validarCurp(curp) {
   const c = normalizar(curp).replace(/\s/g, '');
@@ -176,8 +200,6 @@ export function nombreCoincideConCurp(curp, apellidoPaterno, apellidoMaterno, no
 // Clave de elector (INE)
 // ---------------------------------------------------------------------------
 
-// 6 letras (consonantes de apellidos y nombre) + 6 dígitos (fecha) + 2 dígitos
-// (entidad) + H/M + 3 dígitos.
 const RE_CLAVE_ELECTOR = /\b([A-Z]{6}\d{8}[HM]\d{3})\b/;
 
 export function extraerClaveElector(texto) {
@@ -201,8 +223,6 @@ export function extraerClaveElector(texto) {
 // Nombre en credencial INE
 // ---------------------------------------------------------------------------
 
-// En la INE el nombre viene bajo la etiqueta "NOMBRE" en tres renglones:
-// apellido paterno, apellido materno, nombre(s).
 const ETIQUETAS_RUIDO = /^(NOMBRE|DOMICILIO|CLAVE\s*DE\s*ELECTOR|CURP|ESTADO|MUNICIPIO|LOCALIDAD|SECCION|EMISION|VIGENCIA|FECHA\s*DE\s*NACIMIENTO|SEXO|ANO\s*DE\s*REGISTRO|INSTITUTO|NACIONAL|ELECTORAL|CREDENCIAL|PARA\s*VOTAR|MEXICO)/;
 
 export function extraerNombreINE(texto) {
@@ -214,7 +234,6 @@ export function extraerNombreINE(texto) {
   const iNombre = lineas.findIndex(l => /^NOMBRE\b/.test(l));
   if (iNombre === -1) return null;
 
-  // Tomamos hasta 3 renglones útiles después de la etiqueta.
   const partes = [];
   for (let i = iNombre + 1; i < lineas.length && partes.length < 3; i++) {
     const l = lineas[i];
@@ -240,6 +259,109 @@ export function extraerNombreINE(texto) {
     nombres,
     completo: limpiarEspacios(`${nombres} ${paterno} ${materno}`),
     confianza: partes.length === 3 ? 'media' : 'baja',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Licencias de conducir de Estados Unidos
+// ---------------------------------------------------------------------------
+//
+// Son las que más llegan en la práctica. Usan etiquetas "LN" (last name) y
+// "FN" (first name). El OCR suele pegarlas al apellido ("LNRUIZ") o leer
+// "FN" como "EN", así que los patrones son tolerantes a eso.
+
+// Palabras que aparecen en la credencial y nunca son un nombre.
+const PALABRAS_NO_NOMBRE = new Set([
+  'CLASS', 'NONE', 'END', 'LICENSE', 'DRIVER', 'COMMERCIAL', 'FEDERAL', 'LIMITS',
+  'APPLY', 'CORR', 'LENS', 'RSTR', 'DONOR', 'SEX', 'HAIR', 'EYES', 'HGT', 'WGT',
+  'EXP', 'DOB', 'ISS', 'USA', 'CALIFORNIA', 'VETERAN', 'ORGAN', 'BLK', 'BRN', 'BLU',
+]);
+
+const ESTADOS_USA = [
+  'ALABAMA', 'ALASKA', 'ARIZONA', 'ARKANSAS', 'CALIFORNIA', 'COLORADO', 'CONNECTICUT',
+  'DELAWARE', 'FLORIDA', 'GEORGIA', 'HAWAII', 'IDAHO', 'ILLINOIS', 'INDIANA', 'IOWA',
+  'KANSAS', 'KENTUCKY', 'LOUISIANA', 'MAINE', 'MARYLAND', 'MASSACHUSETTS', 'MICHIGAN',
+  'MINNESOTA', 'MISSISSIPPI', 'MISSOURI', 'MONTANA', 'NEBRASKA', 'NEVADA', 'OHIO',
+  'OKLAHOMA', 'OREGON', 'PENNSYLVANIA', 'TENNESSEE', 'TEXAS', 'UTAH', 'VERMONT',
+  'VIRGINIA', 'WASHINGTON', 'WISCONSIN', 'WYOMING', 'NEW YORK', 'NEW JERSEY',
+];
+
+/**
+ * Descarta capturas que son etiquetas de la credencial o basura del OCR en vez
+ * de un nombre. Con fotos muy comprimidas el OCR produce fragmentos como
+ * "SEN E" que pasarían un filtro laxo y acabarían en el mensaje a seguridad.
+ */
+function esNombrePlausible(candidato) {
+  const limpio = limpiarEspacios(candidato);
+  if (limpio.length < 3 || limpio.length > 40) return false;
+  if (!/^[A-Z][A-Z ]*$/.test(limpio)) return false;
+
+  const palabras = limpio.split(' ');
+  if (palabras.some(p => PALABRAS_NO_NOMBRE.has(p))) return false;
+  // Ninguna palabra suelta de una sola letra: es ruido, no una inicial real.
+  if (palabras.some(p => p.length < 2)) return false;
+  // Y al menos una palabra con cuerpo suficiente para ser un nombre.
+  return palabras.some(p => p.length >= 3);
+}
+
+/**
+ * Extrae los datos de una licencia estadounidense.
+ *
+ * El número de licencia de California tiene forma "letra + 7 dígitos", un
+ * patrón bastante distintivo como para buscarlo aunque la etiqueta "DL" venga
+ * ilegible — que es lo que pasa casi siempre.
+ */
+export function extraerLicenciaUSA(texto) {
+  const t = normalizar(texto);
+  const lineas = t.split('\n');
+
+  const estado = ESTADOS_USA.find(e => t.includes(e));
+  const pareceLicencia = /DRIVER\s*LICEN[SC]E|IDENTIFICATION\s*CARD/.test(t)
+    || (estado && /\bDL\b|\bDOB\b|\bEXP\b/.test(t));
+  if (!pareceLicencia) return null;
+
+  let apellido = '', nombres = '';
+  for (const linea of lineas) {
+    // "LN RUIZ", "LNRUIZ", "LN  CASTILLO &" → apellido
+    if (!apellido) {
+      const m = linea.match(/\bLN\s*([A-Z][A-Z ]{1,28})/);
+      if (m && esNombrePlausible(m[1])) apellido = limpiarEspacios(m[1]);
+    }
+    // "FN ANA", "EN DIEGO ANDRES" (la F leída como E) → nombre(s)
+    if (!nombres) {
+      const m = linea.match(/\b[EF]N\s+([A-Z][A-Z ]{1,28})/);
+      if (m && esNombrePlausible(m[1])) nombres = limpiarEspacios(m[1]);
+    }
+  }
+
+  // Número de licencia: patrón de California (1 letra + 7 dígitos).
+  let numero = '';
+  const conEtiqueta = t.match(/\bDL\s*[:.]?\s*([A-Z]\s?\d{7})\b/);
+  if (conEtiqueta) {
+    numero = conEtiqueta[1].replace(/\s/g, '');
+  } else {
+    const suelto = t.match(/\b([A-Z]\s?\d{7})\b/);
+    if (suelto) numero = suelto[1].replace(/\s/g, '');
+  }
+
+  const nacimiento = t.match(/\bDOB\s*[:.]?\s*(\d{2}\/\d{2}\/\d{4})/);
+  const expiracion = t.match(/\bEXP\s*[:.]?\s*(\d{2}\/\d{2}\/\d{4})/);
+
+  if (!apellido && !nombres && !numero) return null;
+
+  const completo = limpiarEspacios(`${nombres} ${apellido}`);
+  const camposLeidos = [apellido, nombres, numero].filter(Boolean).length;
+
+  return {
+    tipo: 'Licencia',
+    estado: estado || '',
+    apellido,
+    nombres,
+    completo,
+    numero,
+    fechaNacimiento: nacimiento ? nacimiento[1] : '',
+    fechaExpiracion: expiracion ? expiracion[1] : '',
+    confianza: camposLeidos === 3 ? 'alta' : camposLeidos === 2 ? 'media' : 'baja',
   };
 }
 
@@ -325,11 +447,172 @@ export function extraerMrz(texto) {
 }
 
 // ---------------------------------------------------------------------------
-// Placas vehiculares mexicanas
+// Contexto del chat de Airbnb
+// ---------------------------------------------------------------------------
+//
+// Muchas veces lo que se sube es una captura del chat, no la identificación
+// suelta. Ahí vienen datos que NO están en el documento: quién reservó, si
+// traen coche y cuál, y con frecuencia las placas escritas a mano.
+
+/**
+ * Detecta el nombre de quien escribe en el chat.
+ * Airbnb lo muestra como "Miguel · Booker 10:31 PM"; el OCR lee el punto medio
+ * como guion, coma o nada.
+ */
+export function extraerRemitenteChat(texto) {
+  // A diferencia del resto del módulo, aquí trabajamos sobre el texto original:
+  // este nombre va tal cual al mensaje de seguridad, y "Miguel" se lee mejor
+  // que "MIGUEL".
+  const PALABRA = "[A-Za-zÁÉÍÓÚÜÑáéíóúüñ'´-]+";
+  const RE_REMITENTE = new RegExp(
+    `^\\s*([A-ZÁÉÍÓÚÜÑ]${PALABRA}(?:\\s+[A-ZÁÉÍÓÚÜÑ]${PALABRA}){0,3})` +
+    `\\s*[·\\-—,.]?\\s*(BOOKER|GUEST|HUESPED|HUÉSPED|ANFITRION|ANFITRIÓN|HOST)\\b`,
+    'i',
+  );
+
+  for (const linea of (texto || '').split('\n')) {
+    const m = linea.match(RE_REMITENTE);
+    if (!m) continue;
+
+    const nombre = limpiarEspacios(m[1]);
+    if (nombre.length >= 2 && !PALABRAS_NO_NOMBRE.has(normalizar(nombre))) {
+      return { nombre, rol: m[2].toUpperCase() };
+    }
+  }
+  return null;
+}
+
+// Formas de decir "no traemos coche" en los dos idiomas que llegan.
+const PATRONES_SIN_AUTO = [
+  /\bWON'?T\s+BE\s+BRINGING\s+A\s+CAR\b/,
+  /\bNOT\s+BRINGING\s+(A\s+)?(CAR|VEHICLE)\b/,
+  /\bNO\s+CAR\b/,
+  /\bWITHOUT\s+A\s+CAR\b/,
+  /\bDON'?T\s+HAVE\s+A\s+CAR\b/,
+  /\bNO\s+TRAE(N|MOS)?\s+(AUTO|CARRO|COCHE|VEHICULO)\b/,
+  /\bSIN\s+(AUTO|CARRO|COCHE|VEHICULO)\b/,
+  /\bNO\s+LLEV(O|AMOS|AN)\s+(AUTO|CARRO|COCHE|VEHICULO)\b/,
+  /\bNO\s+VAMOS\s+EN\s+(AUTO|CARRO|COCHE)\b/,
+];
+
+/** Indica si el mensaje dice explícitamente que no llevan vehículo. */
+export function detectarSinAuto(texto) {
+  const t = normalizar(texto).replace(/[’']/g, "'");
+  return PATRONES_SIN_AUTO.some(p => p.test(t));
+}
+
+// Marcas comunes en México y Estados Unidos.
+const MARCAS = [
+  'NISSAN', 'TOYOTA', 'HONDA', 'MAZDA', 'CHEVROLET', 'CHEVY', 'VOLKSWAGEN', 'VW',
+  'FORD', 'KIA', 'HYUNDAI', 'SEAT', 'RENAULT', 'BMW', 'AUDI', 'MERCEDES', 'JEEP',
+  'SUZUKI', 'MITSUBISHI', 'PEUGEOT', 'FIAT', 'TESLA', 'DODGE', 'CHRYSLER', 'GMC',
+  'SUBARU', 'VOLVO', 'ACURA', 'LEXUS', 'INFINITI', 'BUICK', 'CADILLAC', 'LINCOLN',
+  'RAM', 'MG', 'CHIREY', 'CHERY', 'BYD', 'JAC', 'CHANGAN', 'HAVAL', 'GREAT WALL',
+];
+
+// Marcas que se escriben en mayúsculas de verdad: capitalizarlas las arruina.
+const MARCAS_SIGLA = new Set(['BMW', 'VW', 'GMC', 'MG', 'BYD', 'JAC', 'RAM', 'SEAT']);
+
+/**
+ * Deja el vehículo presentable: "NISSAN VERSA 2022" → "Nissan Versa 2022",
+ * sin convertir "BMW" en "Bmw" ni tocar el año.
+ */
+export function formatearVehiculo(vehiculo) {
+  return limpiarEspacios(vehiculo)
+    .split(' ')
+    .filter(Boolean)
+    .map(palabra => {
+      const mayus = palabra.toUpperCase();
+      if (MARCAS_SIGLA.has(mayus)) return mayus;
+      if (/^\d+$/.test(palabra)) return palabra;
+      return mayus.charAt(0) + mayus.slice(1).toLowerCase();
+    })
+    .join(' ');
+}
+
+/** Busca marca, modelo y año del vehículo en el texto del mensaje. */
+export function extraerVehiculo(texto) {
+  const t = normalizar(texto);
+  for (const marca of MARCAS) {
+    // El límite de palabra es imprescindible: sin él, el "SACRAMENTO" del
+    // domicilio de una licencia activa la marca "RAM" e inventa un vehículo.
+    const m = t.match(new RegExp(`\\b${marca}\\b`));
+    if (!m) continue;
+    // Tomamos la marca y hasta dos palabras siguientes (modelo y año).
+    const cola = t.slice(m.index, m.index + 40).split(/[,\n;]/)[0];
+    const palabras = cola.split(/\s+/).slice(0, 3).filter(Boolean);
+    return { vehiculo: limpiarEspacios(palabras.join(' ')), marca };
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Listas de nombres pegadas
 // ---------------------------------------------------------------------------
 
-// Los formatos varían por estado. Cada patrón describe la forma esperada como
-// secuencia de 'L' (letra) y 'D' (dígito), junto con dónde van los guiones.
+// Encabezados que anuncian una lista de personas: se quitan y lo que sigue en
+// el renglón todavía puede ser un nombre.
+const ENCABEZADO_DE_PERSONAS = /^(otros\s+hu[eé]spedes|hu[eé]spedes|acompa[ñn]antes|invitados|personas|nombres?|responsable|somos|van|entran)\s*:?\s*/i;
+
+// Etiquetas de otros campos del mensaje. Aquí se descarta el renglón COMPLETO:
+// al pegar un mensaje anterior, "Placas: No traen auto" no debe convertirse en
+// un huésped llamado "No Traen Auto".
+const ETIQUETA_DE_OTRO_CAMPO = /^(fechas?|placas?|plates?|veh[ií]culo|auto|carro|coche|departamento|depa|unidad|torre|piso|check\s*-?\s*(in|out)|entrada|salida|reserva|c[oó]digo|tel[eé]fono)\b/i;
+
+// Palabras con las que empieza una frase, nunca un nombre de pila.
+const ARRANQUE_DE_FRASE = /^(hola|buenas?|buenos?|gracias|no|s[ií]|somos|soy|vamos|voy|llego|llegamos|ser[ií]a|es|son|est[aá]|est[aá]n|te|le|les|mi|mis|nuestro|nuestra|para|por|con|sin|claro|perfecto|ok|okay|hello|hi|thanks?|we|i|the|my|our)\b/i;
+
+// Viñetas y numeración con las que suelen venir las listas.
+const VINETA = /^\s*(?:[-–—*•·+]|\d+\s*[.)-])\s*/;
+
+/**
+ * Decide si un renglón suelto parece el nombre de una persona.
+ *
+ * Es deliberadamente estricto: lo que se cuele aquí acaba impreso en el
+ * mensaje que lee el guardia de la caseta, así que ante la duda se descarta.
+ */
+export function pareceNombre(linea) {
+  const limpio = limpiarEspacios(linea);
+  if (limpio.length < 3 || limpio.length > 60) return false;
+  // Sin dígitos ni símbolos: los nombres no los llevan.
+  if (!/^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ' .-]+$/.test(limpio)) return false;
+  if (ETIQUETA_DE_OTRO_CAMPO.test(limpio)) return false;
+  if (ENCABEZADO_DE_PERSONAS.test(limpio)) return false;
+  if (ARRANQUE_DE_FRASE.test(limpio)) return false;
+
+  const palabras = limpio.split(/[\s.]+/).filter(Boolean);
+  if (palabras.length > 6) return false; // una frase, no un nombre
+  return palabras.some(p => p.length >= 3);
+}
+
+/**
+ * Convierte un pegado de varias líneas en una lista de nombres.
+ *
+ * Cubre el caso más común junto con las fotos: el huésped escribe a quién
+ * lleva, o la clienta copia los nombres de otro lado. Quita viñetas,
+ * numeración y encabezados, y capitaliza para que entren al mensaje ya
+ * presentables.
+ */
+export function nombresDeLista(texto) {
+  const vistos = new Set();
+
+  return (texto || '')
+    .split(/[\n;]/)
+    .map(linea => limpiarEspacios(linea.replace(VINETA, '')))
+    // El renglón de otro campo se descarta entero, antes de quitarle nada.
+    .filter(linea => !ETIQUETA_DE_OTRO_CAMPO.test(linea))
+    .map(linea => limpiarEspacios(linea.replace(ENCABEZADO_DE_PERSONAS, '')))
+    .filter(pareceNombre)
+    .map(capitalizarNombre)
+    .filter(nombre => (vistos.has(nombre) ? false : vistos.add(nombre)));
+}
+
+// ---------------------------------------------------------------------------
+// Placas vehiculares
+// ---------------------------------------------------------------------------
+
+// Cada patrón describe la forma esperada como secuencia de 'L' (letra) y
+// 'D' (dígito), junto con dónde van los guiones.
 const FORMATOS_PLACA = [
   { forma: 'LLLDDDL', guiones: [3, 6], etiqueta: 'Particular (estándar actual)' },
   { forma: 'LLLDDDD', guiones: [3], etiqueta: 'Particular' },
@@ -339,6 +622,7 @@ const FORMATOS_PLACA = [
   { forma: 'LLDDDDD', guiones: [2], etiqueta: 'Servicio público / federal' },
   { forma: 'DDDLL', guiones: [3], etiqueta: 'Motocicleta' },
   { forma: 'LLLDD', guiones: [3], etiqueta: 'Motocicleta' },
+  { forma: 'DLLLDDD', guiones: [1, 4], etiqueta: 'California (EE.UU.)' },
 ];
 
 /** Convierte un token a su "forma" (L/D) para compararlo con los patrones. */
@@ -356,43 +640,136 @@ function formatearPlaca(token, guiones) {
   return salida + token.slice(previo);
 }
 
+// Máximo de caracteres que aceptamos corregir en una placa. Sin este límite,
+// cualquier número de 7 cifras de una credencial se "corrige" hasta parecer una
+// placa válida — el error más peligroso posible, porque manda datos inventados
+// al equipo de seguridad.
+const MAX_CORRECCIONES = 2;
+
+/** Intenta encajar un token en algún formato, con un tope de correcciones. */
+function encajarEnFormato(token, permitirCorreccion) {
+  const exacto = FORMATOS_PLACA.find(f => f.forma === formaDe(token));
+  if (exacto) {
+    return { placas: formatearPlaca(token, exacto.guiones), tipo: exacto.etiqueta, correcciones: 0 };
+  }
+  if (!permitirCorreccion) return null;
+
+  for (const f of FORMATOS_PLACA) {
+    if (f.forma.length !== token.length) continue;
+    let correcciones = 0;
+    const corregido = [...token].map((c, i) => {
+      const nuevo = f.forma[i] === 'D' ? aDigito(c) : aLetra(c);
+      if (nuevo !== c) correcciones++;
+      return nuevo;
+    }).join('');
+    if (formaDe(corregido) === f.forma && correcciones <= MAX_CORRECCIONES) {
+      return { placas: formatearPlaca(corregido, f.guiones), tipo: f.etiqueta, correcciones };
+    }
+  }
+  return null;
+}
+
+// Palabras que anteceden a las placas cuando el huésped las escribe.
+const ANCLA_PLACAS = /\b(PLACAS?|PLATES?|PLATE\s*NUMBER|MATRICULA|LICENSE\s*PLATE|NUMERO\s*DE\s*PLACAS?)\b\s*[:.#-]?\s*/g;
+
+// Señales de que el texto viene de una identificación y no de un mensaje. En
+// ese caso exigimos que las placas vengan ancladas a una palabra clave.
+const RE_TEXTO_DE_DOCUMENTO = /DRIVER\s*LICEN[SC]E|IDENTIFICATION\s*CARD|INSTITUTO\s*NACIONAL|CREDENCIAL\s*PARA\s*VOTAR|PASSPORT|CLAVE\s*DE\s*ELECTOR/;
+
 /**
- * Busca placas en el texto. Prueba la lectura directa y, si no cuadra con
- * ningún formato conocido, aplica correcciones de OCR posición por posición
- * (la O leída donde debe ir un 0, la S donde debe ir un 5, etc.).
+ * Busca placas en el texto.
+ *
+ * Dos modos, según de dónde venga el texto:
+ *
+ * - **Anclado**: hay una palabra como "placas:" antes del dato. Es el caso
+ *   real más común, porque el huésped las escribe en el chat. Alta confianza,
+ *   y aceptamos espacios internos ("ABC 123 D").
+ * - **Suelto**: solo se permite cuando el texto NO parece una identificación,
+ *   y exige coincidencia exacta con un formato, sin correcciones. Así una foto
+ *   de la placa sí funciona, pero los números de una licencia no se convierten
+ *   en placas fantasma.
  */
+// Cuánto texto miramos después de la palabra ancla. Tiene que alcanzar para
+// saltar un paréntesis explicativo y llegar al renglón siguiente, porque las
+// plantillas suelen poner la etiqueta y el dato en líneas distintas.
+const VENTANA_TRAS_ANCLA = 90;
+
+// Palabras que anuncian una placa de muestra, no la del huésped. Sin esto, una
+// plantilla que diga "placas (ejemplo: ABC-123-D)" haría que la placa del
+// ejemplo llegara al mensaje de seguridad cuando el huésped responde citándola.
+const ANUNCIA_UN_EJEMPLO = /^(EJEMPLO|EJEMPLOS|EJEM|EJ|EXAMPLE|EG|FORMATO|ASI|MUESTRA)$/;
+
 export function extraerPlacas(texto) {
-  const candidatos = normalizar(texto)
+  const t = normalizar(texto);
+  const resultados = [];
+
+  // --- Modo anclado ---
+  ANCLA_PLACAS.lastIndex = 0;
+  let ancla;
+  let huboAncla = false;
+  while ((ancla = ANCLA_PLACAS.exec(t)) !== null) {
+    huboAncla = true;
+    const inicio = ancla.index + ancla[0].length;
+    const ventana = t.slice(inicio, inicio + VENTANA_TRAS_ANCLA);
+
+    // Partimos en trozos alfanuméricos y probamos también uniendo hasta tres
+    // seguidos, para aceptar placas escritas separadas: "ABC 123 D".
+    const piezas = ventana.split(/[^A-Z0-9-]+/).filter(Boolean);
+
+    let encontrada = null;
+    for (let i = 0; i < piezas.length && !encontrada; i++) {
+      if (i > 0 && ANUNCIA_UN_EJEMPLO.test(piezas[i - 1].replace(/-/g, ''))) continue;
+
+      // De más trozos a menos: "ABC 123 D" es la placa completa, mientras que
+      // quedarse con "ABC 123" daría un formato válido pero incompleto.
+      for (let n = Math.min(3, piezas.length - i); n >= 1; n--) {
+        const crudo = piezas.slice(i, i + n).join(' ');
+        const token = crudo.replace(/[\s-]/g, '');
+        if (token.length < 5 || token.length > 7) continue;
+
+        const encaje = encajarEnFormato(token, true);
+        if (encaje) {
+          encontrada = {
+            ...encaje,
+            confianza: encaje.correcciones === 0 ? 'alta' : 'media',
+            crudo,
+            anclado: true,
+          };
+          break;
+        }
+      }
+    }
+
+    if (encontrada) resultados.push(encontrada);
+  }
+
+  if (resultados.length > 0) return deduplicar(resultados);
+
+  // El campo estaba etiquetado y no traía una placa válida — por ejemplo,
+  // cuando el huésped devuelve la plantilla sin llenarla. La respuesta correcta
+  // es "no hay placa", no salir a buscarla por otro lado y traer la de muestra.
+  if (huboAncla) return [];
+
+  // --- Modo suelto: solo si el texto no es una identificación ---
+  if (RE_TEXTO_DE_DOCUMENTO.test(t)) return [];
+
+  const candidatos = t
     .replace(/[^A-Z0-9\n\-\s]/g, ' ')
     .split(/\s+/)
-    .map(t => t.replace(/-/g, ''))
-    .filter(t => t.length >= 5 && t.length <= 7 && /^[A-Z0-9]+$/.test(t) && /\d/.test(t));
+    .map(x => x.replace(/-/g, ''))
+    .filter(x => x.length >= 5 && x.length <= 7 && /^[A-Z0-9]+$/.test(x) && /\d/.test(x) && /[A-Z]/.test(x));
 
-  const resultados = [];
   for (const token of candidatos) {
-    const exacto = FORMATOS_PLACA.find(f => f.forma === formaDe(token));
-    if (exacto) {
-      resultados.push({
-        placas: formatearPlaca(token, exacto.guiones),
-        tipo: exacto.etiqueta, confianza: 'alta', crudo: token,
-      });
-      continue;
-    }
-    // Corrección dirigida: forzamos cada posición al tipo que el patrón exige.
-    for (const f of FORMATOS_PLACA) {
-      if (f.forma.length !== token.length) continue;
-      const corregido = [...token].map((c, i) => (f.forma[i] === 'D' ? aDigito(c) : aLetra(c))).join('');
-      if (formaDe(corregido) === f.forma) {
-        resultados.push({
-          placas: formatearPlaca(corregido, f.guiones),
-          tipo: f.etiqueta, confianza: 'media', crudo: token,
-        });
-        break;
-      }
+    const encaje = encajarEnFormato(token, false); // sin correcciones
+    if (encaje) {
+      resultados.push({ ...encaje, confianza: 'media', crudo: token, anclado: false });
     }
   }
 
-  // Preferimos las lecturas de alta confianza y descartamos duplicados.
+  return deduplicar(resultados);
+}
+
+function deduplicar(resultados) {
   const vistos = new Set();
   return resultados
     .sort((a, b) => (a.confianza === 'alta' ? 0 : 1) - (b.confianza === 'alta' ? 0 : 1))
@@ -404,7 +781,7 @@ export function extraerPlacas(texto) {
 // ---------------------------------------------------------------------------
 
 /**
- * Analiza el texto completo del OCR y arma el registro del huésped.
+ * Analiza el texto completo del OCR y arma el registro de una persona.
  * Devuelve además una lista de avisos para que la UI señale exactamente qué
  * campos necesitan ojo humano, en lugar de pedir revisar todo.
  */
@@ -413,7 +790,10 @@ export function analizarTexto(texto) {
   const datos = {
     nombre: '', tipoDocumento: '', numeroDocumento: '', curp: '',
     fechaNacimiento: '', sexo: '', nacionalidad: '', placas: '', tipoPlaca: '',
+    vehiculo: '', sinAuto: false, remitente: '',
   };
+
+  // --- Documento de identidad ---
 
   const mrz = extraerMrz(texto);
   if (mrz) {
@@ -425,6 +805,18 @@ export function analizarTexto(texto) {
     datos.nacionalidad = mrz.nacionalidad;
     if (mrz.confianza !== 'alta') {
       avisos.push('La MRZ del pasaporte no verificó del todo — confirma número y nombre.');
+    }
+  }
+
+  const licencia = !mrz && extraerLicenciaUSA(texto);
+  if (licencia) {
+    datos.tipoDocumento = 'Licencia';
+    datos.nombre = licencia.completo;
+    datos.numeroDocumento = licencia.numero;
+    datos.fechaNacimiento = licencia.fechaNacimiento;
+    if (licencia.estado) datos.nacionalidad = 'USA';
+    if (!licencia.apellido || !licencia.nombres) {
+      avisos.push('De la licencia solo se leyó parte del nombre — complétalo a mano.');
     }
   }
 
@@ -448,7 +840,6 @@ export function analizarTexto(texto) {
     if (nombreIne.confianza === 'baja') {
       avisos.push('El nombre se leyó en un solo bloque — verifica el orden de los apellidos.');
     }
-    // Verificación cruzada: el CURP codifica las iniciales del nombre.
     if (curp?.valido && nombreIne.apellidoPaterno) {
       const cruce = nombreCoincideConCurp(
         curp.curp, nombreIne.apellidoPaterno, nombreIne.apellidoMaterno, nombreIne.nombres,
@@ -465,20 +856,54 @@ export function analizarTexto(texto) {
     datos.tipoDocumento ||= 'INE';
   }
 
+  // --- Contexto del chat ---
+
+  const remitente = extraerRemitenteChat(texto);
+  if (remitente) {
+    datos.remitente = remitente.nombre;
+    // Si no se pudo leer el documento, el nombre del chat es mejor que nada.
+    if (!datos.nombre) {
+      datos.nombre = remitente.nombre;
+      avisos.push(`No se leyó el documento; se tomó "${remitente.nombre}" del chat. Verifícalo.`);
+    }
+  }
+
+  datos.sinAuto = detectarSinAuto(texto);
+
+  const vehiculo = extraerVehiculo(texto);
+  if (vehiculo) datos.vehiculo = vehiculo.vehiculo;
+
+  // --- Placas ---
+
   const placas = extraerPlacas(texto);
   if (placas.length > 0) {
     datos.placas = placas[0].placas;
     datos.tipoPlaca = placas[0].tipo;
-    if (placas[0].confianza !== 'alta') {
+    if (placas[0].correcciones > 0) {
       avisos.push(`Las placas se corrigieron de "${placas[0].crudo}" — confírmalas.`);
+    }
+    if (!placas[0].anclado) {
+      avisos.push('Las placas se dedujeron sin una etiqueta que las anuncie — verifícalas.');
     }
     if (placas.length > 1) {
       avisos.push(`Se detectó más de una placa posible: ${placas.map(p => p.placas).join(', ')}`);
     }
   }
 
+  // --- Presentación ---
+
+  // Nombre y vehículo viajan al mensaje de seguridad tal cual, así que se
+  // entregan ya presentables en vez de gritados como los imprime la
+  // credencial o como los normalizamos para analizarlos.
+  if (datos.nombre) datos.nombre = capitalizarNombre(datos.nombre);
+  if (datos.vehiculo) datos.vehiculo = formatearVehiculo(datos.vehiculo);
+
+  // --- Avisos finales ---
+
   if (!datos.nombre) avisos.push('No se pudo leer el nombre — captúralo a mano.');
-  if (!datos.placas) avisos.push('No se detectaron placas en la imagen.');
+  if (!datos.placas && !datos.sinAuto) {
+    avisos.push('No se detectaron placas. Si no traen coche, marca la casilla.');
+  }
 
   return { datos, avisos, placasAlternativas: placas.slice(1).map(p => p.placas) };
 }

@@ -1,10 +1,10 @@
 // app.js — Orquestación de la interfaz.
 
 import { reconocerVarias } from './ocr.js';
-import { analizarTexto, validarCurp } from './parsers.js';
+import { analizarTexto, validarCurp, nombresDeLista } from './parsers.js';
 import {
-  PLANTILLA_POR_DEFECTO, renderizar, enlaceWhatsApp, copiarAlPortapapeles,
-  resumenDelDia, aCSV, fechaISOaLocal,
+  PLANTILLA_POR_DEFECTO, mensajeDeReserva, enlaceWhatsApp, copiarAlPortapapeles,
+  resumenDelDia, aCSV, hoyISO,
 } from './format.js';
 import {
   guardarRegistro, listarRegistros, borrarRegistro, borrarTodo,
@@ -13,11 +13,27 @@ import {
 
 const $ = id => document.getElementById(id);
 
+let siguienteId = 1;
+
+/** Reserva vacía. Una reserva agrupa a todas las personas que entran juntas. */
+function reservaVacia() {
+  return {
+    propiedad: '',
+    fechaInicio: hoyISO(),
+    fechaFin: '',
+    placas: '',
+    vehiculo: '',
+    sinAuto: false,
+    codigo: '',
+    personas: [],
+  };
+}
+
 // Estado en memoria. Las imágenes viven solo aquí y se descartan al terminar:
 // nunca tocan disco ni la base de datos.
 const estado = {
-  imagenes: [],       // { archivo, url, rotacion }
-  textoCrudo: '',
+  imagenes: [],
+  reserva: reservaVacia(),
   ajustes: leerAjustes(),
   registros: [],
 };
@@ -32,7 +48,7 @@ function avisar(mensaje) {
   brindis.textContent = mensaje;
   brindis.classList.add('visible');
   clearTimeout(temporizadorBrindis);
-  temporizadorBrindis = setTimeout(() => brindis.classList.remove('visible'), 2600);
+  temporizadorBrindis = setTimeout(() => brindis.classList.remove('visible'), 2800);
 }
 
 function mostrarVista(nombre) {
@@ -49,6 +65,209 @@ document.querySelectorAll('.pestana').forEach(p => {
 });
 
 // ---------------------------------------------------------------------------
+// Personas de la reserva
+// ---------------------------------------------------------------------------
+
+function agregarPersona(datos = {}) {
+  const persona = {
+    id: siguienteId++,
+    nombre: datos.nombre || '',
+    tipoDocumento: datos.tipoDocumento || '',
+    numeroDocumento: datos.numeroDocumento || '',
+    curp: datos.curp || '',
+    // La primera persona capturada es, por defecto, quien reservó.
+    esResponsable: estado.reserva.personas.length === 0,
+  };
+  estado.reserva.personas.push(persona);
+  dibujarPersonas();
+  actualizarVistaPrevia();
+  return persona;
+}
+
+function quitarPersona(id) {
+  const { personas } = estado.reserva;
+  const i = personas.findIndex(p => p.id === id);
+  if (i === -1) return;
+
+  const eraResponsable = personas[i].esResponsable;
+  personas.splice(i, 1);
+  // Si se fue quien reservó, el primero de la lista toma su lugar.
+  if (eraResponsable && personas.length) personas[0].esResponsable = true;
+
+  dibujarPersonas();
+  actualizarVistaPrevia();
+}
+
+function marcarResponsable(id) {
+  for (const p of estado.reserva.personas) p.esResponsable = p.id === id;
+  dibujarPersonas();
+  actualizarVistaPrevia();
+}
+
+function dibujarPersonas() {
+  const contenedor = $('listaPersonas');
+  contenedor.textContent = '';
+
+  for (const persona of estado.reserva.personas) {
+    const fila = document.createElement('div');
+    fila.className = 'persona';
+
+    // Selector de responsable.
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'responsable';
+    radio.checked = persona.esResponsable;
+    radio.title = 'Marcar como responsable de la reserva';
+    radio.addEventListener('change', () => marcarResponsable(persona.id));
+
+    const centro = document.createElement('div');
+    centro.className = 'persona-centro';
+
+    const entrada = document.createElement('input');
+    entrada.type = 'text';
+    entrada.value = persona.nombre;
+    entrada.placeholder = 'Nombre completo';
+    entrada.autocomplete = 'off';
+    entrada.className = persona.nombre ? '' : 'revisar';
+    entrada.addEventListener('input', () => {
+      persona.nombre = entrada.value;
+      entrada.classList.toggle('revisar', !entrada.value.trim());
+      actualizarVistaPrevia();
+    });
+
+    centro.append(entrada);
+
+    // Detalle del documento, solo si el OCR alcanzó a leerlo.
+    const detalle = [persona.tipoDocumento, persona.numeroDocumento].filter(Boolean).join(' ');
+    if (detalle) {
+      const meta = document.createElement('div');
+      meta.className = 'persona-meta';
+      meta.textContent = detalle;
+      centro.append(meta);
+    }
+
+    const rol = document.createElement('span');
+    rol.className = 'persona-rol';
+    rol.textContent = persona.esResponsable ? 'Responsable' : 'Acompañante';
+
+    const quitar = document.createElement('button');
+    quitar.type = 'button';
+    quitar.className = 'persona-quitar';
+    quitar.textContent = '✕';
+    quitar.title = 'Quitar de la reserva';
+    quitar.addEventListener('click', () => quitarPersona(persona.id));
+
+    fila.append(radio, centro, rol, quitar);
+    contenedor.append(fila);
+  }
+}
+
+$('btnAgregarManual').addEventListener('click', () => {
+  agregarPersona();
+  // El campo recién creado es el último input de la lista.
+  const entradas = $('listaPersonas').querySelectorAll('input[type="text"]');
+  entradas[entradas.length - 1]?.focus();
+});
+
+// ---------------------------------------------------------------------------
+// Datos de la reserva
+// ---------------------------------------------------------------------------
+
+const CAMPOS_RESERVA = {
+  campoPropiedad: 'propiedad',
+  campoFechaInicio: 'fechaInicio',
+  campoFechaFin: 'fechaFin',
+  campoPlacas: 'placas',
+  campoVehiculo: 'vehiculo',
+  campoCodigo: 'codigo',
+};
+
+for (const [id, clave] of Object.entries(CAMPOS_RESERVA)) {
+  $(id).addEventListener('input', e => {
+    estado.reserva[clave] = clave === 'placas'
+      ? e.target.value.toUpperCase()
+      : e.target.value;
+    if (clave === 'placas') e.target.value = estado.reserva.placas;
+    actualizarVistaPrevia();
+  });
+}
+
+$('campoSinAuto').addEventListener('change', e => {
+  estado.reserva.sinAuto = e.target.checked;
+  aplicarSinAuto();
+  actualizarVistaPrevia();
+});
+
+/** Cuando no traen coche, los campos de placas y vehículo estorban. */
+function aplicarSinAuto() {
+  const desactivar = estado.reserva.sinAuto;
+  for (const id of ['campoPlacas', 'campoVehiculo']) {
+    $(id).disabled = desactivar;
+    $(id).closest('.campo').classList.toggle('inactivo', desactivar);
+  }
+}
+
+function volcarReservaEnFormulario() {
+  for (const [id, clave] of Object.entries(CAMPOS_RESERVA)) {
+    $(id).value = estado.reserva[clave] || '';
+  }
+  $('campoSinAuto').checked = estado.reserva.sinAuto;
+  aplicarSinAuto();
+}
+
+function actualizarVistaPrevia() {
+  const plantilla = estado.ajustes.plantilla || PLANTILLA_POR_DEFECTO;
+  const mensaje = mensajeDeReserva(estado.reserva, plantilla);
+  $('vistaPrevia').textContent = mensaje || '(agrega los datos de la reserva)';
+}
+
+// ---------------------------------------------------------------------------
+// Pegar texto del chat
+// ---------------------------------------------------------------------------
+//
+// Es el camino principal y el más exacto: el texto copiado del chat de Airbnb
+// llega sin errores, mientras que en una foto hay que adivinar cada letra.
+
+const campoPegado = $('campoPegado');
+
+function refrescarBotonesPegado() {
+  const vacio = campoPegado.value.trim() === '';
+  $('btnLeerPegado').disabled = vacio;
+  $('btnLeerNombres').disabled = vacio;
+}
+
+campoPegado.addEventListener('input', refrescarBotonesPegado);
+
+$('btnLeerPegado').addEventListener('click', () => {
+  const texto = campoPegado.value.trim();
+  if (!texto) return;
+
+  const { datos, avisos } = analizarTexto(texto);
+
+  agregarPersona(datos);
+  aplicarDatosDeReserva(datos);
+  mostrarAvisos(avisos, datos);
+
+  campoPegado.value = '';
+  refrescarBotonesPegado();
+  avisar(`Agregado: ${datos.nombre || 'persona sin nombre'}`);
+});
+
+$('btnLeerNombres').addEventListener('click', () => {
+  const nombres = nombresDeLista(campoPegado.value);
+
+  if (nombres.length === 0) {
+    avisar('No se reconoció ningún nombre en ese texto.');
+    return;
+  }
+  for (const nombre of nombres) agregarPersona({ nombre });
+
+  campoPegado.value = '';
+  refrescarBotonesPegado();
+  avisar(`${nombres.length} persona(s) agregada(s).`);
+});
+
+// ---------------------------------------------------------------------------
 // Carga de imágenes
 // ---------------------------------------------------------------------------
 
@@ -61,12 +280,19 @@ function agregarImagenes(archivos) {
   for (const archivo of nuevas) {
     estado.imagenes.push({ archivo, url: URL.createObjectURL(archivo), rotacion: 0 });
   }
+  $('bloqueFoto').open = true;
   dibujarMiniaturas();
 }
 
 function quitarImagen(indice) {
   URL.revokeObjectURL(estado.imagenes[indice].url);
   estado.imagenes.splice(indice, 1);
+  dibujarMiniaturas();
+}
+
+function limpiarImagenes() {
+  estado.imagenes.forEach(i => URL.revokeObjectURL(i.url));
+  estado.imagenes = [];
   dibujarMiniaturas();
 }
 
@@ -89,7 +315,7 @@ function dibujarMiniaturas() {
     const girar = document.createElement('button');
     girar.type = 'button';
     girar.textContent = '↻';
-    girar.title = 'Girar 90°';
+    girar.title = 'Girar 90° (el motor ya detecta la orientación solo)';
     girar.addEventListener('click', e => {
       e.preventDefault();
       img.rotacion = (img.rotacion + 90) % 360;
@@ -136,12 +362,36 @@ zona.addEventListener('keydown', e => {
 }));
 zona.addEventListener('drop', e => agregarImagenes(e.dataTransfer.files));
 
-// Pegar con Ctrl+V: es lo más rápido cuando trabaja desde la computadora.
+/**
+ * Ctrl+V en cualquier parte de la página. Es lo más rápido cuando trabaja
+ * desde la computadora: copia del chat de Airbnb, cambia de pestaña y pega,
+ * sin tener que apuntarle a ninguna caja.
+ *
+ * Si el cursor ya está dentro de un campo, no nos metemos: ahí el pegado
+ * normal del navegador es lo que la persona espera.
+ */
 document.addEventListener('paste', e => {
+  const dentroDeCampo = e.target instanceof HTMLInputElement
+    || e.target instanceof HTMLTextAreaElement;
+  if (dentroDeCampo) return;
+
   const archivos = [...(e.clipboardData?.files || [])];
   if (archivos.length) {
     agregarImagenes(archivos);
     avisar(`${archivos.length} imagen(es) pegada(s).`);
+    return;
+  }
+
+  const texto = e.clipboardData?.getData('text')?.trim();
+  if (texto) {
+    e.preventDefault();
+    $('bloqueTexto').open = true;
+    campoPegado.value = campoPegado.value.trim()
+      ? `${campoPegado.value.trim()}\n${texto}`
+      : texto;
+    refrescarBotonesPegado();
+    campoPegado.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    avisar('Texto pegado — toca «Leer datos».');
   }
 });
 
@@ -153,6 +403,7 @@ $('btnLeer').addEventListener('click', async () => {
   const boton = $('btnLeer');
   boton.disabled = true;
   $('progreso').classList.remove('oculto');
+  $('avisos').textContent = '';
 
   const actualizarProgreso = (p, texto) => {
     $('barraRelleno').style.width = `${Math.round((p || 0) * 100)}%`;
@@ -161,129 +412,84 @@ $('btnLeer').addEventListener('click', async () => {
 
   try {
     actualizarProgreso(0, 'Preparando el motor de lectura…');
-    const { texto } = await reconocerVarias(estado.imagenes, { alProgresar: actualizarProgreso });
+    const { texto, textoAmpliado } = await reconocerVarias(estado.imagenes, {
+      alProgresar: actualizarProgreso,
+    });
 
-    estado.textoCrudo = texto;
     $('textoCrudo').textContent = texto || '(sin texto)';
 
-    const { datos, avisos } = analizarTexto(texto);
-    llenarFormulario(datos);
-    mostrarAvisos(avisos);
+    // El analizador recibe todas las variantes de lectura; la vista de texto
+    // crudo muestra solo la mejor, que es la legible para una persona.
+    const { datos, avisos } = analizarTexto(textoAmpliado);
 
-    $('tarjetaDatos').classList.remove('oculto');
-    $('tarjetaMensaje').classList.remove('oculto');
-    actualizarVistaPrevia();
-    $('tarjetaDatos').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    agregarPersona(datos);
+    aplicarDatosDeReserva(datos);
+    mostrarAvisos(avisos, datos);
+
+    limpiarImagenes();
   } catch (error) {
     console.error(error);
     avisar(error.message || 'No se pudo leer la imagen.');
-    // Aun con el OCR caído, la captura manual debe seguir siendo posible.
-    $('tarjetaDatos').classList.remove('oculto');
-    $('tarjetaMensaje').classList.remove('oculto');
   } finally {
     $('progreso').classList.add('oculto');
-    boton.disabled = false;
+    boton.disabled = estado.imagenes.length === 0;
   }
 });
 
-function llenarFormulario(datos) {
-  $('campoNombre').value = datos.nombre || '';
-  $('campoTipoDocumento').value = datos.tipoDocumento || '';
-  $('campoNumeroDocumento').value = datos.numeroDocumento || '';
-  $('campoCurp').value = datos.curp || '';
-  $('campoPlacas').value = datos.placas || '';
-  revisarCurp();
+/**
+ * Algunos datos que salen de la foto pertenecen a la reserva, no a la persona:
+ * las placas, el vehículo y el aviso de que no traen coche suelen venir en el
+ * texto del chat. Solo se rellenan si el campo está vacío, para no pisar lo
+ * que la clienta ya haya escrito a mano.
+ */
+function aplicarDatosDeReserva(datos) {
+  if (datos.sinAuto && !estado.reserva.placas) {
+    estado.reserva.sinAuto = true;
+  }
+  if (datos.placas && !estado.reserva.placas) {
+    estado.reserva.placas = datos.placas;
+    estado.reserva.sinAuto = false;
+  }
+  if (datos.vehiculo && !estado.reserva.vehiculo) {
+    estado.reserva.vehiculo = datos.vehiculo;
+  }
+  volcarReservaEnFormulario();
+  actualizarVistaPrevia();
 }
 
-function mostrarAvisos(avisos) {
+function mostrarAvisos(avisos, datos) {
   const caja = $('avisos');
   caja.textContent = '';
-  if (!avisos.length) return;
 
   const lista = document.createElement('ul');
+
+  // Confirmación positiva de lo que sí quedó verificado.
+  if (datos.curp) {
+    const v = validarCurp(datos.curp);
+    if (v.valido) {
+      const li = document.createElement('li');
+      li.className = 'aviso-ok';
+      li.textContent = `CURP válido (${v.fechaNacimiento}, ${v.sexo}) — verificado con su dígito de control.`;
+      lista.append(li);
+    }
+  }
+
   for (const aviso of avisos) {
     const li = document.createElement('li');
     li.textContent = aviso;
     lista.append(li);
   }
-  caja.append(lista);
 
-  // Resaltamos los campos citados para dirigir la vista al problema.
-  const texto = avisos.join(' ').toLowerCase();
-  $('campoNombre').classList.toggle('revisar', texto.includes('nombre'));
-  $('campoPlacas').classList.toggle('revisar', texto.includes('placa'));
-  $('campoCurp').classList.toggle('revisar', texto.includes('curp'));
+  if (lista.children.length) caja.append(lista);
 }
-
-// ---------------------------------------------------------------------------
-// Formulario y vista previa
-// ---------------------------------------------------------------------------
-
-const CAMPOS = [
-  'campoNombre', 'campoTipoDocumento', 'campoNumeroDocumento', 'campoCurp',
-  'campoPlacas', 'campoVehiculo', 'campoPropiedad', 'campoPersonas',
-  'campoCheckin', 'campoCheckout', 'campoReserva',
-];
-
-function datosDelFormulario() {
-  return {
-    nombre: $('campoNombre').value.trim(),
-    tipoDocumento: $('campoTipoDocumento').value.trim(),
-    numeroDocumento: $('campoNumeroDocumento').value.trim(),
-    curp: $('campoCurp').value.trim().toUpperCase(),
-    placas: $('campoPlacas').value.trim().toUpperCase(),
-    vehiculo: $('campoVehiculo').value.trim(),
-    propiedad: $('campoPropiedad').value.trim(),
-    personas: $('campoPersonas').value.trim(),
-    checkin: fechaISOaLocal($('campoCheckin').value),
-    checkout: fechaISOaLocal($('campoCheckout').value),
-    reserva: $('campoReserva').value.trim(),
-  };
-}
-
-function mensajeActual() {
-  const plantilla = estado.ajustes.plantilla || PLANTILLA_POR_DEFECTO;
-  return renderizar(plantilla, datosDelFormulario());
-}
-
-function actualizarVistaPrevia() {
-  $('vistaPrevia').textContent = mensajeActual() || '(completa los datos)';
-}
-
-/** Valida el CURP en vivo: el dígito verificador nos dice si está bien escrito. */
-function revisarCurp() {
-  const valor = $('campoCurp').value.trim().toUpperCase();
-  const estadoCurp = $('estadoCurp');
-
-  if (!valor) {
-    estadoCurp.textContent = '';
-    estadoCurp.className = '';
-    $('campoCurp').classList.remove('revisar');
-    return;
-  }
-
-  const r = validarCurp(valor);
-  if (r.valido) {
-    estadoCurp.textContent = `✓ válido · ${r.fechaNacimiento} · ${r.sexo}`;
-    estadoCurp.className = 'ok';
-    $('campoCurp').classList.remove('revisar');
-  } else {
-    estadoCurp.textContent = '✕ no válido';
-    estadoCurp.className = 'mal';
-    $('campoCurp').classList.add('revisar');
-  }
-}
-
-CAMPOS.forEach(id => {
-  $(id).addEventListener('input', () => {
-    actualizarVistaPrevia();
-    if (id === 'campoCurp') revisarCurp();
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Acciones de envío
 // ---------------------------------------------------------------------------
+
+function mensajeActual() {
+  return mensajeDeReserva(estado.reserva, estado.ajustes.plantilla || PLANTILLA_POR_DEFECTO);
+}
 
 $('btnCopiar').addEventListener('click', async () => {
   const ok = await copiarAlPortapapeles(mensajeActual());
@@ -295,35 +501,33 @@ $('btnWhatsApp').addEventListener('click', () => {
 });
 
 $('btnGuardar').addEventListener('click', async () => {
-  const datos = datosDelFormulario();
-  if (!datos.nombre) {
-    avisar('Falta el nombre para poder guardar.');
+  if (estado.reserva.personas.length === 0) {
+    avisar('Agrega al menos una persona antes de guardar.');
     return;
   }
-  await guardarRegistro(datos);
-  avisar('Guardado en el registro.');
+  await guardarRegistro({ ...estado.reserva });
+  avisar('Reserva guardada en el registro.');
 });
 
-$('btnNuevo').addEventListener('click', reiniciarCaptura);
+$('btnNuevo').addEventListener('click', reiniciarReserva);
 
-function reiniciarCaptura() {
+function reiniciarReserva() {
   // Liberamos las imágenes de memoria: es el momento en que la foto de la
   // identificación deja de existir en la aplicación.
-  estado.imagenes.forEach(i => URL.revokeObjectURL(i.url));
-  estado.imagenes = [];
-  estado.textoCrudo = '';
+  limpiarImagenes();
 
-  dibujarMiniaturas();
-  CAMPOS.forEach(id => {
-    const el = $(id);
-    el.value = id === 'campoPersonas' ? '1' : '';
-    el.classList.remove('revisar');
-  });
+  estado.reserva = reservaVacia();
+  volcarReservaEnFormulario();
+  dibujarPersonas();
+  actualizarVistaPrevia();
+
+  campoPegado.value = '';
+  refrescarBotonesPegado();
+
   $('avisos').textContent = '';
   $('textoCrudo').textContent = '';
-  $('estadoCurp').textContent = '';
-  $('tarjetaDatos').classList.add('oculto');
-  $('tarjetaMensaje').classList.add('oculto');
+  $('bloqueFoto').open = false;
+  $('bloqueTexto').open = true;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -344,30 +548,39 @@ function dibujarLista() {
 
   const visibles = estado.registros.filter(r => {
     if (!filtro) return true;
-    return [r.nombre, r.placas, r.propiedad, r.reserva]
-      .some(v => (v || '').toLowerCase().includes(filtro));
+    const campos = [r.propiedad, r.placas, r.codigo, ...(r.personas || []).map(p => p.nombre)];
+    return campos.some(v => (v || '').toLowerCase().includes(filtro));
   });
 
   for (const registro of visibles) {
+    const personas = registro.personas || [];
+    const responsable = personas.find(p => p.esResponsable) || personas[0];
+
     const fila = document.createElement('div');
     fila.className = 'registro';
 
     const datos = document.createElement('div');
     datos.className = 'registro-datos';
 
-    const nombre = document.createElement('div');
-    nombre.className = 'registro-nombre';
-    nombre.textContent = registro.nombre || 'Sin nombre';
+    const titulo = document.createElement('div');
+    titulo.className = 'registro-nombre';
+    titulo.textContent = responsable?.nombre || 'Sin nombre';
 
     const meta = document.createElement('div');
     meta.className = 'registro-meta';
-    for (const parte of [registro.propiedad, registro.placas, registro.checkin].filter(Boolean)) {
+    const trozos = [
+      registro.propiedad,
+      registro.fechaInicio,
+      personas.length > 1 ? `${personas.length} personas` : null,
+      registro.sinAuto ? 'sin auto' : registro.placas,
+    ].filter(Boolean);
+    for (const trozo of trozos) {
       const span = document.createElement('span');
-      span.textContent = parte;
+      span.textContent = trozo;
       meta.append(span);
     }
 
-    datos.append(nombre, meta);
+    datos.append(titulo, meta);
 
     const acciones = document.createElement('div');
     acciones.className = 'registro-acciones';
@@ -377,7 +590,7 @@ function dibujarLista() {
     copiar.textContent = 'Copiar';
     copiar.addEventListener('click', async () => {
       const plantilla = estado.ajustes.plantilla || PLANTILLA_POR_DEFECTO;
-      const ok = await copiarAlPortapapeles(renderizar(plantilla, registro));
+      const ok = await copiarAlPortapapeles(mensajeDeReserva(registro, plantilla));
       avisar(ok ? 'Copiado.' : 'No se pudo copiar.');
     });
 
@@ -385,7 +598,7 @@ function dibujarLista() {
     eliminar.type = 'button';
     eliminar.textContent = 'Borrar';
     eliminar.addEventListener('click', async () => {
-      if (!confirm(`¿Borrar el registro de ${registro.nombre}?`)) return;
+      if (!confirm(`¿Borrar la reserva de ${responsable?.nombre || 'esta unidad'}?`)) return;
       await borrarRegistro(registro.id);
       await refrescarRegistro();
       avisar('Registro borrado.');
@@ -400,8 +613,7 @@ function dibujarLista() {
 $('campoBuscar').addEventListener('input', dibujarLista);
 
 function dibujarResumen() {
-  const fecha = fechaISOaLocal($('campoFechaResumen').value);
-  $('vistaResumen').textContent = resumenDelDia(estado.registros, fecha);
+  $('vistaResumen').textContent = resumenDelDia(estado.registros, $('campoFechaResumen').value);
 }
 
 $('campoFechaResumen').addEventListener('input', dibujarResumen);
@@ -424,7 +636,7 @@ $('btnExportar').addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const enlace = document.createElement('a');
   enlace.href = url;
-  enlace.download = `registro-accesos-${new Date().toISOString().slice(0, 10)}.csv`;
+  enlace.download = `registro-accesos-${hoyISO()}.csv`;
   enlace.click();
   URL.revokeObjectURL(url);
 });
@@ -495,11 +707,12 @@ $('campoTelefono').addEventListener('input', e => {
 // ---------------------------------------------------------------------------
 
 async function iniciar() {
-  const hoyISO = new Date().toISOString().slice(0, 10);
-  $('campoCheckin').value = hoyISO;
-  $('campoFechaResumen').value = hoyISO;
+  $('campoFechaResumen').value = hoyISO();
 
   cargarAjustesEnFormulario();
+  volcarReservaEnFormulario();
+  dibujarPersonas();
+  actualizarVistaPrevia();
 
   // La purga automática corre al abrir: así la retención se cumple sola.
   try {

@@ -152,11 +152,15 @@ test('acepta placas ya escritas con guiones', () => {
   assert.equal(r[0].placas, 'ABC-123-D');
 });
 
-test('corrige la I leída donde debía ir un 1', () => {
-  const r = extraerPlacas('ABCI23D');
+test('corrige la I leída donde debía ir un 1, si hay una palabra que las anuncie', () => {
+  const r = extraerPlacas('placas: ABCI23D');
   assert.equal(r[0].placas, 'ABC-123-D');
   assert.equal(r[0].confianza, 'media');
   assert.equal(r[0].crudo, 'ABCI23D');
+});
+
+test('sin esa palabra NO corrige: adivinar aquí manda datos falsos a seguridad', () => {
+  assert.deepEqual(extraerPlacas('ABCI23D'), []);
 });
 
 test('reconoce el formato previo de tres dígitos y tres letras', () => {
@@ -206,7 +210,7 @@ test('analizarTexto arma el registro completo desde una INE simulada', () => {
   ].join('\n');
 
   const { datos, avisos } = analizarTexto(texto);
-  assert.equal(datos.nombre, 'MARIA FERNANDA LOPEZ RUIZ');
+  assert.equal(datos.nombre, 'Maria Fernanda Lopez Ruiz');
   assert.equal(datos.curp, CURP_VALIDO);
   assert.equal(datos.tipoDocumento, 'INE');
   assert.equal(datos.placas, 'ABC-123-D');

@@ -7,7 +7,9 @@
 // equipo se pierde o se lo roban.
 
 const BD_NOMBRE = 'reserva-autonoma';
-const BD_VERSION = 1;
+// v2: el registro pasó de una persona por fila a una reserva con varias
+// personas, y el índice de fecha cambió de 'checkin' a 'fechaInicio'.
+const BD_VERSION = 2;
 const ALMACEN = 'registros';
 const CLAVE_AJUSTES = 'reserva-autonoma:ajustes';
 
@@ -19,13 +21,16 @@ function abrirBD() {
   bdPromise = new Promise((resolver, rechazar) => {
     const solicitud = indexedDB.open(BD_NOMBRE, BD_VERSION);
 
-    solicitud.onupgradeneeded = () => {
+    solicitud.onupgradeneeded = evento => {
       const bd = solicitud.result;
-      if (!bd.objectStoreNames.contains(ALMACEN)) {
-        const almacen = bd.createObjectStore(ALMACEN, { keyPath: 'id', autoIncrement: true });
-        almacen.createIndex('checkin', 'checkin');
-        almacen.createIndex('capturadoEn', 'capturadoEn');
-      }
+      const almacen = bd.objectStoreNames.contains(ALMACEN)
+        ? evento.target.transaction.objectStore(ALMACEN)
+        : bd.createObjectStore(ALMACEN, { keyPath: 'id', autoIncrement: true });
+
+      // Índice viejo del modelo de una persona por registro.
+      if (almacen.indexNames.contains('checkin')) almacen.deleteIndex('checkin');
+      if (!almacen.indexNames.contains('fechaInicio')) almacen.createIndex('fechaInicio', 'fechaInicio');
+      if (!almacen.indexNames.contains('capturadoEn')) almacen.createIndex('capturadoEn', 'capturadoEn');
     };
 
     solicitud.onsuccess = () => resolver(solicitud.result);

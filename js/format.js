@@ -2,18 +2,19 @@
 //
 // El objetivo de este módulo es que la clienta nunca escriba: recibe el texto
 // ya formateado, listo para copiar o para abrir WhatsApp con él precargado.
+//
+// La plantilla por defecto reproduce el formato que ya usa con su equipo de
+// seguridad, para que ellos no tengan que acostumbrarse a nada nuevo.
 
 export const PLANTILLA_POR_DEFECTO = [
-  '🏠 ACCESO AUTORIZADO — {{propiedad}}',
-  '📅 Entrada {{checkin}} · Salida {{checkout}}',
-  '',
-  '👤 {{nombre}}',
-  '🆔 {{tipoDocumento}} {{numeroDocumento}}',
-  '🚗 {{placas}} · {{vehiculo}}',
-  '👥 {{personas}} persona(s)',
-  '',
-  'Reserva {{reserva}}',
+  '{{propiedad}}',
+  'Fechas: {{fechas}}',
+  'Responsable: {{responsable}}',
+  '{{otrosHuespedes}}',
+  'Placas: {{placas}}',
 ].join('\n');
+
+export const TEXTO_SIN_AUTO = 'No traen auto';
 
 const SEPARADOR = '·';
 
@@ -31,7 +32,7 @@ function resolverSegmento(segmento, datos) {
 
   return segmento
     .replace(/\{\{(\w+)\}\}/g, (_, clave) => String(datos[clave] ?? '').trim())
-    .replace(/\s{2,}/g, ' ')
+    .replace(/[^\S\n]{2,}/g, ' ')
     .trim() || null;
 }
 
@@ -39,7 +40,7 @@ function resolverSegmento(segmento, datos) {
  * Rellena la plantilla. Trabaja segmento por segmento (separados por '·') para
  * que los datos faltantes se lleven consigo su etiqueta, y descarta el renglón
  * completo si no quedó nada — un huésped sin coche no debe producir un renglón
- * suelto con un emoji y nada más.
+ * suelto con una etiqueta y nada más.
  */
 export function renderizar(plantilla, datos) {
   return plantilla
@@ -60,6 +61,88 @@ export function renderizar(plantilla, datos) {
     .join('\n')
     .trim();
 }
+
+// ---------------------------------------------------------------------------
+// Composición de los campos de una reserva
+// ---------------------------------------------------------------------------
+
+const MESES = [
+  'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+  'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+];
+
+/**
+ * Formatea el rango de fechas como lo escribe la clienta: "16-17 agosto"
+ * cuando caen en el mismo mes, y "30 agosto - 2 septiembre" cuando lo cruzan.
+ */
+export function formatearRangoFechas(inicioISO, finISO) {
+  const partes = iso => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null;
+    const [a, m, d] = iso.split('-').map(Number);
+    return { anio: a, mes: m - 1, dia: d };
+  };
+
+  const inicio = partes(inicioISO);
+  const fin = partes(finISO);
+
+  if (!inicio && !fin) return '';
+  if (!fin) return `${inicio.dia} ${MESES[inicio.mes]}`;
+  if (!inicio) return `${fin.dia} ${MESES[fin.mes]}`;
+
+  if (inicio.anio === fin.anio && inicio.mes === fin.mes) {
+    return inicio.dia === fin.dia
+      ? `${inicio.dia} ${MESES[inicio.mes]}`
+      : `${inicio.dia}-${fin.dia} ${MESES[inicio.mes]}`;
+  }
+  return `${inicio.dia} ${MESES[inicio.mes]} - ${fin.dia} ${MESES[fin.mes]}`;
+}
+
+/**
+ * Construye el bloque de acompañantes, con su encabezado. Devuelve cadena
+ * vacía si viaja sola una persona, para que el renglón desaparezca del mensaje.
+ */
+export function bloqueOtrosHuespedes(nombres) {
+  const limpios = (nombres || []).map(n => (n || '').trim()).filter(Boolean);
+  if (limpios.length === 0) return '';
+  return ['Otros huéspedes:', ...limpios].join('\n');
+}
+
+/** Texto del renglón de placas: el dato, o la nota de que no traen coche. */
+export function textoPlacas({ sinAuto, placas, vehiculo }) {
+  if (sinAuto) return TEXTO_SIN_AUTO;
+  const partes = [(placas || '').trim(), (vehiculo || '').trim()].filter(Boolean);
+  return partes.join(` ${SEPARADOR} `);
+}
+
+/**
+ * Traduce una reserva (propiedad, fechas, personas, vehículo) a los marcadores
+ * que espera la plantilla.
+ */
+export function camposDeReserva(reserva) {
+  const personas = reserva.personas || [];
+  const responsable = personas.find(p => p.esResponsable) || personas[0];
+  const otros = personas.filter(p => p !== responsable).map(p => p.nombre);
+
+  return {
+    propiedad: reserva.propiedad || '',
+    fechas: formatearRangoFechas(reserva.fechaInicio, reserva.fechaFin),
+    responsable: responsable?.nombre || '',
+    otrosHuespedes: bloqueOtrosHuespedes(otros),
+    placas: textoPlacas(reserva),
+    vehiculo: reserva.vehiculo || '',
+    reserva: reserva.codigo || '',
+    totalPersonas: personas.length ? String(personas.length) : '',
+  };
+}
+
+/** Arma el mensaje completo de una reserva. */
+export function mensajeDeReserva(reserva, plantilla = PLANTILLA_POR_DEFECTO) {
+  return renderizar(plantilla, camposDeReserva(reserva));
+}
+
+// ---------------------------------------------------------------------------
+// Envío
+// ---------------------------------------------------------------------------
 
 /**
  * Construye el enlace que abre WhatsApp con el mensaje ya escrito.
@@ -98,58 +181,75 @@ export async function copiarAlPortapapeles(texto) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Resumen y exportación
+// ---------------------------------------------------------------------------
+
 /**
  * Resumen diario para seguridad: una sola lista con todas las entradas del
  * día, que es lo que realmente le sirve al equipo en la caseta.
  */
-export function resumenDelDia(registros, fecha) {
-  const delDia = registros.filter(r => r.checkin === fecha);
+export function resumenDelDia(reservas, fechaISO) {
+  const delDia = reservas.filter(r => r.fechaInicio === fechaISO);
+  const fechaLegible = formatearRangoFechas(fechaISO, fechaISO);
+
   if (delDia.length === 0) {
-    return `📋 ${fecha} — Sin entradas programadas.`;
+    return `ENTRADAS ${fechaLegible} — sin reservas programadas.`;
   }
 
-  const lineas = delDia
+  const bloques = delDia
     .sort((a, b) => (a.propiedad || '').localeCompare(b.propiedad || ''))
     .map((r, i) => {
-      const partes = [`${i + 1}. ${r.nombre || 'Sin nombre'}`];
-      if (r.propiedad) partes.push(`— ${r.propiedad}`);
-      if (r.placas) partes.push(`— 🚗 ${r.placas}`);
-      if (r.personas) partes.push(`— 👥 ${r.personas}`);
-      return partes.join(' ');
+      const campos = camposDeReserva(r);
+      const personas = r.personas || [];
+      const lineas = [`${i + 1}. ${campos.propiedad || 'Sin unidad'}`];
+      if (campos.responsable) lineas.push(`   Responsable: ${campos.responsable}`);
+      const otros = personas.filter(p => p.nombre !== campos.responsable).map(p => p.nombre).filter(Boolean);
+      if (otros.length) lineas.push(`   Acompañan: ${otros.join(', ')}`);
+      lineas.push(`   Placas: ${campos.placas || 'sin dato'}`);
+      return lineas.join('\n');
     });
 
   return [
-    `📋 ENTRADAS DE HOY — ${fecha}`,
-    `${delDia.length} reserva(s)`,
+    `ENTRADAS ${fechaLegible}`,
+    `${delDia.length} reserva(s), ${delDia.reduce((n, r) => n + (r.personas?.length || 0), 0)} persona(s)`,
     '',
-    ...lineas,
+    ...bloques,
   ].join('\n');
 }
 
-/** Fecha de hoy en formato DD/MM/AAAA. */
-export function hoy() {
-  const d = new Date();
-  const p = n => String(n).padStart(2, '0');
-  return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()}`;
-}
-
-/** Convierte el valor de un <input type="date"> (AAAA-MM-DD) a DD/MM/AAAA. */
-export function fechaISOaLocal(iso) {
-  if (!iso) return '';
-  const [a, m, d] = iso.split('-');
-  return `${d}/${m}/${a}`;
-}
-
-/** Exporta el registro a CSV para respaldo o para entregarlo a administración. */
-export function aCSV(registros) {
+/** Exporta el registro a CSV, una fila por persona. */
+export function aCSV(reservas) {
   const columnas = [
-    'fechaCaptura', 'propiedad', 'checkin', 'checkout', 'nombre',
-    'tipoDocumento', 'numeroDocumento', 'curp', 'placas', 'vehiculo',
-    'personas', 'reserva',
+    'capturadoEn', 'propiedad', 'fechaInicio', 'fechaFin', 'persona', 'rol',
+    'tipoDocumento', 'numeroDocumento', 'curp', 'placas', 'vehiculo', 'codigo',
   ];
   const escapar = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
-  return [
-    columnas.join(','),
-    ...registros.map(r => columnas.map(c => escapar(r[c])).join(',')),
-  ].join('\n');
+
+  const filas = [];
+  for (const r of reservas) {
+    const personas = r.personas?.length ? r.personas : [{ nombre: '', esResponsable: true }];
+    for (const p of personas) {
+      filas.push(columnas.map(c => {
+        switch (c) {
+          case 'persona': return escapar(p.nombre);
+          case 'rol': return escapar(p.esResponsable ? 'Responsable' : 'Acompañante');
+          case 'tipoDocumento': return escapar(p.tipoDocumento);
+          case 'numeroDocumento': return escapar(p.numeroDocumento);
+          case 'curp': return escapar(p.curp);
+          case 'placas': return escapar(textoPlacas(r));
+          default: return escapar(r[c]);
+        }
+      }).join(','));
+    }
+  }
+
+  return [columnas.join(','), ...filas].join('\n');
+}
+
+/** Fecha de hoy en formato ISO (AAAA-MM-DD), que es lo que usan los inputs. */
+export function hoyISO() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 }

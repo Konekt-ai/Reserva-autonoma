@@ -1,5 +1,14 @@
 node_modules/
+
 # El motor de OCR (35 MB) se reconstruye con: npm run vendorizar
 vendor/
+
+# Identificaciones reales de huespedes. NUNCA deben entrar al repositorio:
+# son datos personales de terceros y quedarian en el historial para siempre.
+ejemplo reales/
+ejemplos/
+*.jpeg
+*.jpg
+
 *.log
 .DS_Store

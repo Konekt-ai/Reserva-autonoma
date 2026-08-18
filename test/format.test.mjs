@@ -2,59 +2,143 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  PLANTILLA_POR_DEFECTO, renderizar, enlaceWhatsApp, resumenDelDia, aCSV, fechaISOaLocal,
+  PLANTILLA_POR_DEFECTO, renderizar, mensajeDeReserva, camposDeReserva,
+  formatearRangoFechas, bloqueOtrosHuespedes, textoPlacas,
+  enlaceWhatsApp, resumenDelDia, aCSV,
 } from '../js/format.js';
 
-const COMPLETO = {
-  nombre: 'MARIA FERNANDA LOPEZ RUIZ',
-  tipoDocumento: 'INE',
-  numeroDocumento: 'LPRZMR95031509M400',
-  placas: 'ABC-123-D',
-  vehiculo: 'Mazda 3 gris',
-  propiedad: 'Torre B — 1204',
-  checkin: '20/08/2026',
-  checkout: '23/08/2026',
-  personas: '3',
-  reserva: 'HMABC123XY',
+// La reserva de ejemplo reproduce un caso real de la clienta.
+const RESERVA = {
+  propiedad: 'Departamento 606 Torre 2',
+  fechaInicio: '2026-08-16',
+  fechaFin: '2026-08-17',
+  sinAuto: true,
+  placas: '',
+  vehiculo: '',
+  codigo: '',
+  personas: [
+    { nombre: 'Ana Ruiz', esResponsable: true },
+    { nombre: 'Luis Ruiz', esResponsable: false },
+    { nombre: 'Diego Andres Castillo', esResponsable: false },
+  ],
 };
 
-test('renderiza todos los renglones cuando hay datos completos', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, COMPLETO);
-  assert.match(salida, /MARIA FERNANDA LOPEZ RUIZ/);
-  assert.match(salida, /ABC-123-D · Mazda 3 gris/);
-  assert.match(salida, /Entrada 20\/08\/2026 · Salida 23\/08\/2026/);
-  assert.match(salida, /Reserva HMABC123XY/);
+// ---------------------------------------------------------------------------
+// Rango de fechas
+// ---------------------------------------------------------------------------
+
+test('un rango dentro del mismo mes se escribe "16-17 agosto"', () => {
+  assert.equal(formatearRangoFechas('2026-08-16', '2026-08-17'), '16-17 agosto');
 });
 
-test('el segmento vacío se lleva su etiqueta: sin check-out no queda "Salida" colgando', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, { ...COMPLETO, checkout: '' });
-  assert.match(salida, /Entrada 20\/08\/2026/);
-  assert.ok(!salida.includes('Salida'), `quedó "Salida" huérfana en:\n${salida}`);
-  assert.ok(!/·\s*$/m.test(salida), 'quedó un separador colgando al final de un renglón');
+test('un rango que cruza de mes nombra ambos meses', () => {
+  assert.equal(formatearRangoFechas('2026-08-30', '2026-09-02'), '30 agosto - 2 septiembre');
 });
 
-test('un huésped sin coche no genera el renglón del vehículo', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, { ...COMPLETO, placas: '', vehiculo: '' });
-  assert.ok(!salida.includes('🚗'), `quedó el renglón del coche vacío:\n${salida}`);
-  assert.match(salida, /MARIA FERNANDA/);
+test('una sola noche no repite el día', () => {
+  assert.equal(formatearRangoFechas('2026-08-16', '2026-08-16'), '16 agosto');
 });
 
-test('conserva las placas aunque no se sepa el modelo del coche', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, { ...COMPLETO, vehiculo: '' });
-  assert.match(salida, /🚗 ABC-123-D/);
-  assert.ok(!/ABC-123-D\s*·/.test(salida), 'quedó un separador sin contenido después de las placas');
+test('sin fecha de salida se muestra solo la llegada', () => {
+  assert.equal(formatearRangoFechas('2026-08-16', ''), '16 agosto');
 });
 
-test('sin código de reserva se elimina ese renglón', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, { ...COMPLETO, reserva: '' });
-  assert.ok(!salida.includes('Reserva'));
+test('sin ninguna fecha devuelve cadena vacía', () => {
+  assert.equal(formatearRangoFechas('', ''), '');
 });
 
-test('no deja renglones en blanco duplicados al final', () => {
-  const salida = renderizar(PLANTILLA_POR_DEFECTO, { nombre: 'JUAN PEREZ' });
-  assert.ok(!/\n\n\n/.test(salida), `hay renglones en blanco de más:\n${JSON.stringify(salida)}`);
-  assert.equal(salida.trim(), salida);
+// ---------------------------------------------------------------------------
+// Bloques del mensaje
+// ---------------------------------------------------------------------------
+
+test('el bloque de acompañantes lleva su encabezado', () => {
+  assert.equal(
+    bloqueOtrosHuespedes(['Luis Ruiz', 'Diego Andres Castillo']),
+    'Otros huéspedes:\nLuis Ruiz\nDiego Andres Castillo',
+  );
 });
+
+test('viajando una sola persona el bloque desaparece', () => {
+  assert.equal(bloqueOtrosHuespedes([]), '');
+  assert.equal(bloqueOtrosHuespedes(['', '  ']), '');
+});
+
+test('sin auto, el renglón de placas lo dice explícitamente', () => {
+  assert.equal(textoPlacas({ sinAuto: true, placas: 'ABC-123-D' }), 'No traen auto');
+});
+
+test('con auto se combinan placas y vehículo', () => {
+  assert.equal(
+    textoPlacas({ sinAuto: false, placas: 'ABC-123-D', vehiculo: 'Nissan Versa 2022' }),
+    'ABC-123-D · Nissan Versa 2022',
+  );
+});
+
+test('con placas pero sin modelo no queda separador colgando', () => {
+  assert.equal(textoPlacas({ sinAuto: false, placas: 'ABC-123-D', vehiculo: '' }), 'ABC-123-D');
+});
+
+// ---------------------------------------------------------------------------
+// Mensaje completo
+// ---------------------------------------------------------------------------
+
+test('reproduce exactamente el formato que ya usa la clienta', () => {
+  assert.equal(mensajeDeReserva(RESERVA), [
+    'Departamento 606 Torre 2',
+    'Fechas: 16-17 agosto',
+    'Responsable: Ana Ruiz',
+    'Otros huéspedes:',
+    'Luis Ruiz',
+    'Diego Andres Castillo',
+    'Placas: No traen auto',
+  ].join('\n'));
+});
+
+test('con una sola persona se omite el bloque de acompañantes', () => {
+  const salida = mensajeDeReserva({
+    ...RESERVA,
+    personas: [{ nombre: 'Miguel Ángel García Fernández', esResponsable: true }],
+    sinAuto: false,
+    placas: 'ABC-123-D',
+    vehiculo: 'Nissan Versa 2022',
+  });
+  assert.ok(!salida.includes('Otros huéspedes'), `sobró el bloque:\n${salida}`);
+  assert.match(salida, /Responsable: Miguel Ángel García Fernández/);
+  assert.match(salida, /Placas: ABC-123-D · Nissan Versa 2022/);
+});
+
+test('si nadie está marcado como responsable, toma a la primera persona', () => {
+  const campos = camposDeReserva({
+    ...RESERVA,
+    personas: [{ nombre: 'Ana Gómez' }, { nombre: 'Luis Díaz' }],
+  });
+  assert.equal(campos.responsable, 'Ana Gómez');
+  assert.equal(campos.otrosHuespedes, 'Otros huéspedes:\nLuis Díaz');
+});
+
+test('el responsable no se repite entre los acompañantes', () => {
+  const salida = mensajeDeReserva(RESERVA);
+  assert.equal(salida.match(/Ana Ruiz/g).length, 1);
+});
+
+test('una reserva sin unidad no deja un renglón vacío al inicio', () => {
+  const salida = mensajeDeReserva({ ...RESERVA, propiedad: '' });
+  assert.ok(!salida.startsWith('\n'));
+  assert.ok(salida.startsWith('Fechas:'), `arrancó mal:\n${JSON.stringify(salida)}`);
+});
+
+test('renderizar respeta una plantilla personalizada', () => {
+  const salida = renderizar('Unidad {{propiedad}} | {{totalPersonas}} personas', camposDeReserva(RESERVA));
+  assert.equal(salida, 'Unidad Departamento 606 Torre 2 | 3 personas');
+});
+
+test('la plantilla por defecto no deja marcadores sin resolver', () => {
+  assert.ok(!mensajeDeReserva(RESERVA, PLANTILLA_POR_DEFECTO).includes('{{'));
+});
+
+// ---------------------------------------------------------------------------
+// Envío
+// ---------------------------------------------------------------------------
 
 test('el enlace de WhatsApp codifica el mensaje', () => {
   const url = enlaceWhatsApp('Hola & adiós');
@@ -66,30 +150,40 @@ test('con teléfono el enlace apunta a ese chat y limpia el formato', () => {
   assert.match(enlaceWhatsApp('hola', '+52 55 1234 5678'), /^https:\/\/wa\.me\/525512345678\?text=/);
 });
 
-test('el resumen del día lista solo las entradas de esa fecha', () => {
-  const registros = [
-    { nombre: 'ANA GOMEZ', checkin: '20/08/2026', placas: 'AAA-111-A', propiedad: 'Torre A' },
-    { nombre: 'LUIS DIAZ', checkin: '21/08/2026', placas: 'BBB-222-B', propiedad: 'Torre B' },
-    { nombre: 'SARA RUIZ', checkin: '20/08/2026', placas: 'CCC-333-C', propiedad: 'Torre C' },
-  ];
-  const salida = resumenDelDia(registros, '20/08/2026');
-  assert.match(salida, /2 reserva/);
-  assert.match(salida, /ANA GOMEZ/);
-  assert.match(salida, /SARA RUIZ/);
-  assert.ok(!salida.includes('LUIS DIAZ'));
+// ---------------------------------------------------------------------------
+// Resumen e exportación
+// ---------------------------------------------------------------------------
+
+test('el resumen del día agrupa por reserva y cuenta personas', () => {
+  const otra = {
+    propiedad: 'Departamento 101 Torre 1',
+    fechaInicio: '2026-08-16',
+    sinAuto: false,
+    placas: 'ABC-123-D',
+    personas: [{ nombre: 'Miguel García', esResponsable: true }],
+  };
+  const salida = resumenDelDia([RESERVA, otra], '2026-08-16');
+  assert.match(salida, /2 reserva\(s\), 4 persona\(s\)/);
+  assert.match(salida, /Responsable: Ana Ruiz/);
+  assert.match(salida, /Acompañan: Luis Ruiz, Diego Andres Castillo/);
+  assert.match(salida, /Placas: No traen auto/);
+  assert.match(salida, /Placas: ABC-123-D/);
 });
 
-test('el resumen avisa cuando no hay entradas', () => {
-  assert.match(resumenDelDia([], '20/08/2026'), /Sin entradas/);
+test('el resumen ignora reservas de otras fechas', () => {
+  assert.match(resumenDelDia([RESERVA], '2026-08-20'), /sin reservas/);
+});
+
+test('el CSV genera una fila por persona con su rol', () => {
+  const csv = aCSV([RESERVA]);
+  const filas = csv.split('\n');
+  assert.equal(filas.length, 4); // encabezado + 3 personas
+  assert.match(filas[1], /"Ana Ruiz","Responsable"/);
+  assert.match(filas[2], /"Luis Ruiz","Acompañante"/);
+  assert.match(csv, /"No traen auto"/);
 });
 
 test('el CSV escapa comillas y comas', () => {
-  const csv = aCSV([{ nombre: 'PEREZ, JUAN "EL CHATO"', placas: 'ABC-123-D' }]);
+  const csv = aCSV([{ ...RESERVA, personas: [{ nombre: 'PEREZ, JUAN "EL CHATO"', esResponsable: true }] }]);
   assert.match(csv, /"PEREZ, JUAN ""EL CHATO"""/);
-  assert.equal(csv.split('\n').length, 2);
-});
-
-test('convierte la fecha del input date a formato local', () => {
-  assert.equal(fechaISOaLocal('2026-08-20'), '20/08/2026');
-  assert.equal(fechaISOaLocal(''), '');
 });

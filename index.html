@@ -12,73 +12,45 @@
 
 <header class="cabecera">
   <h1>Registro de Acceso</h1>
-  <p class="subtitulo" id="indicadorPrivacidad">Procesamiento local · la foto no sale de este dispositivo</p>
+  <p class="subtitulo">Procesamiento local · la foto no sale de este dispositivo</p>
 </header>
 
 <nav class="pestanas" role="tablist">
-  <button class="pestana activa" data-vista="capturar" role="tab">Capturar</button>
+  <button class="pestana activa" data-vista="capturar" role="tab">Reserva</button>
   <button class="pestana" data-vista="registro" role="tab">Registro</button>
   <button class="pestana" data-vista="ajustes" role="tab">Ajustes</button>
 </nav>
 
 <main>
 
-  <!-- =================== CAPTURAR =================== -->
+  <!-- =================== RESERVA =================== -->
   <section id="vista-capturar" class="vista activa">
 
-    <!-- Paso 1: imágenes -->
+    <!-- Paso 1: datos de la reserva -->
     <div class="tarjeta">
-      <h2>1 · Fotos del huésped</h2>
-      <p class="ayuda">Sube la identificación y, si la mandó aparte, la foto de las placas. Puedes pegar con Ctrl+V.</p>
-
-      <label class="zona-soltar" id="zonaSoltar" tabindex="0">
-        <input type="file" id="entradaArchivos" accept="image/*" multiple hidden>
-        <span class="icono-soltar">📷</span>
-        <strong>Toca para elegir o arrastra las fotos aquí</strong>
-        <span class="ayuda">JPG, PNG o HEIC</span>
-      </label>
-
-      <div id="miniaturas" class="miniaturas"></div>
-
-      <button id="btnLeer" class="boton principal" disabled>Leer datos de las fotos</button>
-
-      <div id="progreso" class="progreso oculto">
-        <div class="barra"><div class="barra-relleno" id="barraRelleno"></div></div>
-        <span id="textoProgreso" class="ayuda"></span>
-      </div>
-    </div>
-
-    <!-- Paso 2: revisión -->
-    <div class="tarjeta oculto" id="tarjetaDatos">
-      <h2>2 · Revisa y completa</h2>
-
-      <div id="avisos" class="avisos"></div>
+      <h2>1 · Datos de la reserva</h2>
 
       <div class="rejilla">
         <label class="campo campo-ancho">
-          <span>Nombre completo</span>
-          <input type="text" id="campoNombre" autocomplete="off" placeholder="Como aparece en la identificación">
+          <span>Unidad</span>
+          <input type="text" id="campoPropiedad" list="listaPropiedades" autocomplete="off"
+                 placeholder="Departamento 606 Torre 2">
+          <datalist id="listaPropiedades"></datalist>
         </label>
 
         <label class="campo">
-          <span>Documento</span>
-          <select id="campoTipoDocumento">
-            <option value="">—</option>
-            <option>INE</option>
-            <option>Pasaporte</option>
-            <option>Licencia</option>
-            <option>Otro</option>
-          </select>
+          <span>Llegada</span>
+          <input type="date" id="campoFechaInicio">
         </label>
 
         <label class="campo">
-          <span>Número / clave</span>
-          <input type="text" id="campoNumeroDocumento" autocomplete="off">
+          <span>Salida</span>
+          <input type="date" id="campoFechaFin">
         </label>
 
-        <label class="campo campo-ancho">
-          <span>CURP <small id="estadoCurp"></small></span>
-          <input type="text" id="campoCurp" autocomplete="off" maxlength="18" spellcheck="false">
+        <label class="campo campo-ancho casilla">
+          <input type="checkbox" id="campoSinAuto">
+          <span class="etiqueta-casilla">No traen auto</span>
         </label>
 
         <label class="campo">
@@ -88,44 +60,83 @@
 
         <label class="campo">
           <span>Vehículo</span>
-          <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Mazda 3 gris">
-        </label>
-
-        <label class="campo">
-          <span>Propiedad / unidad</span>
-          <input type="text" id="campoPropiedad" list="listaPropiedades" autocomplete="off" placeholder="Torre B — 1204">
-          <datalist id="listaPropiedades"></datalist>
-        </label>
-
-        <label class="campo">
-          <span>Personas</span>
-          <input type="number" id="campoPersonas" min="1" value="1">
-        </label>
-
-        <label class="campo">
-          <span>Check-in</span>
-          <input type="date" id="campoCheckin">
-        </label>
-
-        <label class="campo">
-          <span>Check-out</span>
-          <input type="date" id="campoCheckout">
+          <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Nissan Versa 2022">
         </label>
 
         <label class="campo campo-ancho">
-          <span>Código de reserva</span>
-          <input type="text" id="campoReserva" autocomplete="off" placeholder="HMABC123XY">
+          <span>Código de reserva <small>(opcional)</small></span>
+          <input type="text" id="campoCodigo" autocomplete="off" placeholder="HMABC123XY">
         </label>
       </div>
+    </div>
 
-      <details class="detalle-ocr">
-        <summary>Ver texto crudo que leyó el OCR</summary>
-        <pre id="textoCrudo"></pre>
+    <!-- Paso 2: personas -->
+    <div class="tarjeta">
+      <h2>2 · Personas que ingresan</h2>
+
+      <div id="listaPersonas" class="lista-personas"></div>
+
+      <button id="btnAgregarManual" class="boton terciario">+ Agregar persona a mano</button>
+
+      <details class="bloque-entrada" id="bloqueTexto" open>
+        <summary>Pegar texto copiado de Airbnb</summary>
+
+        <p class="ayuda">
+          Selecciona el mensaje en el chat de Airbnb, cópialo y pégalo aquí.
+          Es más exacto que la foto porque no hay que adivinar ninguna letra.
+        </p>
+
+        <label class="campo campo-ancho">
+          <span class="oculto-visual">Texto pegado del chat</span>
+          <textarea id="campoPegado" rows="5" spellcheck="false"
+                    placeholder="Pega aquí lo que copiaste del chat…&#10;&#10;Ejemplo:&#10;Hola, somos Ana Ruiz y Luis Díaz.&#10;Nissan Versa 2022, placas: ABC-123-D"></textarea>
+        </label>
+
+        <div class="acciones">
+          <button id="btnLeerPegado" class="boton principal" disabled>Leer datos</button>
+          <button id="btnLeerNombres" class="boton terciario" disabled>Solo son nombres</button>
+        </div>
+        <p class="ayuda">
+          <strong>Leer datos</strong> saca placas, vehículo y la persona del mensaje.
+          <strong>Solo son nombres</strong> toma cada renglón como una persona distinta.
+        </p>
+      </details>
+
+      <details class="bloque-entrada" id="bloqueFoto">
+        <summary>Leer una identificación desde foto</summary>
+
+        <p class="ayuda">
+          Sirve la captura del chat de Airbnb, la foto de la credencial o la
+          pantalla del celular. Se detecta la orientación sola.
+        </p>
+
+        <label class="zona-soltar" id="zonaSoltar" tabindex="0">
+          <input type="file" id="entradaArchivos" accept="image/*" multiple hidden>
+          <span class="icono-soltar">📷</span>
+          <strong>Toca para elegir o arrastra las fotos</strong>
+          <span class="ayuda">También puedes pegar con Ctrl+V</span>
+        </label>
+
+        <div id="miniaturas" class="miniaturas"></div>
+
+        <button id="btnLeer" class="boton principal" disabled>Leer y agregar persona</button>
+
+        <div id="progreso" class="progreso oculto">
+          <div class="barra"><div class="barra-relleno" id="barraRelleno"></div></div>
+          <span id="textoProgreso" class="ayuda"></span>
+        </div>
+
+        <div id="avisos" class="avisos"></div>
+
+        <details class="detalle-ocr">
+          <summary>Ver texto crudo que leyó el OCR</summary>
+          <pre id="textoCrudo"></pre>
+        </details>
       </details>
     </div>
 
-    <!-- Paso 3: enviar -->
-    <div class="tarjeta oculto" id="tarjetaMensaje">
+    <!-- Paso 3: mensaje -->
+    <div class="tarjeta">
       <h2>3 · Mensaje para seguridad</h2>
       <pre id="vistaPrevia" class="vista-previa"></pre>
 
@@ -133,11 +144,14 @@
         <button id="btnCopiar" class="boton principal">📋 Copiar</button>
         <button id="btnWhatsApp" class="boton secundario">💬 Abrir WhatsApp</button>
       </div>
-      <p class="ayuda">WhatsApp no permite abrir un grupo directo desde un enlace: se abrirá con el mensaje ya escrito y eliges el grupo de seguridad.</p>
+      <p class="ayuda">
+        WhatsApp no permite abrir un grupo directo desde un enlace: se abrirá con
+        el mensaje ya escrito y eliges el grupo de seguridad.
+      </p>
 
       <div class="acciones">
         <button id="btnGuardar" class="boton terciario">Guardar en el registro</button>
-        <button id="btnNuevo" class="boton terciario">Empezar otro</button>
+        <button id="btnNuevo" class="boton terciario">Nueva reserva</button>
       </div>
     </div>
   </section>
@@ -174,23 +188,24 @@
       <h2>Mensaje a seguridad</h2>
       <label class="campo campo-ancho">
         <span>Plantilla</span>
-        <textarea id="campoPlantilla" rows="10" spellcheck="false"></textarea>
+        <textarea id="campoPlantilla" rows="8" spellcheck="false"></textarea>
       </label>
       <p class="ayuda">
-        Marcadores disponibles: <code>{{nombre}}</code> <code>{{placas}}</code>
-        <code>{{vehiculo}}</code> <code>{{propiedad}}</code> <code>{{checkin}}</code>
-        <code>{{checkout}}</code> <code>{{personas}}</code> <code>{{reserva}}</code>
-        <code>{{tipoDocumento}}</code> <code>{{numeroDocumento}}</code> <code>{{curp}}</code>.
+        Marcadores: <code>{{propiedad}}</code> <code>{{fechas}}</code>
+        <code>{{responsable}}</code> <code>{{otrosHuespedes}}</code>
+        <code>{{placas}}</code> <code>{{vehiculo}}</code>
+        <code>{{totalPersonas}}</code> <code>{{reserva}}</code>.
         Los renglones sin datos se eliminan solos.
       </p>
       <button id="btnRestablecerPlantilla" class="boton terciario">Restablecer plantilla</button>
     </div>
 
     <div class="tarjeta">
-      <h2>Propiedades</h2>
+      <h2>Unidades</h2>
       <label class="campo campo-ancho">
         <span>Una por renglón</span>
-        <textarea id="campoPropiedades" rows="5" placeholder="Torre A — 501&#10;Torre B — 1204"></textarea>
+        <textarea id="campoPropiedades" rows="5"
+                  placeholder="Departamento 606 Torre 2&#10;Departamento 1204 Torre B"></textarea>
       </label>
     </div>
 
@@ -208,7 +223,10 @@
         <span>Teléfono de seguridad (opcional)</span>
         <input type="tel" id="campoTelefono" placeholder="52155…">
       </label>
-      <p class="ayuda">Si lo llenas, el botón de WhatsApp abre ese chat directo en vez del selector. Déjalo vacío para elegir el grupo.</p>
+      <p class="ayuda">
+        Si lo llenas, el botón de WhatsApp abre ese chat directo en vez del
+        selector. Déjalo vacío para elegir el grupo.
+      </p>
     </div>
 
     <div class="tarjeta">

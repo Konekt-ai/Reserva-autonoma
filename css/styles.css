@@ -424,3 +424,160 @@ main {
   .rejilla { grid-template-columns: 1fr; }
   .acciones { flex-direction: column; }
 }
+
+/* ---------- Personas de la reserva ---------- */
+
+.lista-personas:empty::after {
+  content: "Sin personas todavía. Agrega una desde una foto o a mano.";
+  display: block;
+  padding: 1rem 0;
+  text-align: center;
+  color: var(--texto-suave);
+  font-size: .875rem;
+}
+
+.persona {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  padding: .6rem 0;
+  border-bottom: 1px solid var(--borde);
+}
+.persona:last-child { border-bottom: 0; }
+
+.persona input[type="radio"] {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--acento);
+  cursor: pointer;
+}
+
+.persona-centro { flex: 1; min-width: 0; }
+
+.persona-centro input[type="text"] {
+  width: 100%;
+  padding: .5rem .6rem;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--fondo);
+  color: var(--texto);
+  font-size: 1rem;
+  font-family: inherit;
+}
+.persona-centro input[type="text"]:focus {
+  outline: 2px solid var(--acento);
+  outline-offset: -1px;
+}
+.persona-centro input.revisar {
+  border-color: var(--aviso-borde);
+  background: color-mix(in srgb, var(--aviso-borde) 10%, var(--fondo));
+}
+
+.persona-meta {
+  font-size: .75rem;
+  color: var(--texto-suave);
+  margin-top: .2rem;
+  padding-left: .1rem;
+}
+
+.persona-rol {
+  flex: none;
+  font-size: .6875rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--texto-suave);
+  white-space: nowrap;
+}
+
+.persona-quitar {
+  flex: none;
+  border: 1px solid var(--borde);
+  background: transparent;
+  color: var(--texto-suave);
+  border-radius: 6px;
+  width: 30px;
+  height: 30px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: .875rem;
+}
+.persona-quitar:hover {
+  border-color: var(--peligro);
+  color: var(--peligro);
+}
+
+/* ---------- Casilla "no traen auto" ---------- */
+
+.campo.casilla {
+  flex-direction: row;
+  align-items: center;
+  gap: .55rem;
+  padding: .55rem .7rem;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  background: var(--fondo);
+  cursor: pointer;
+}
+.campo.casilla input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--acento);
+  cursor: pointer;
+}
+.etiqueta-casilla {
+  font-size: .9375rem;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--texto);
+}
+.campo.inactivo { opacity: .45; }
+
+/* ---------- Bloques plegables de captura ---------- */
+
+.bloque-entrada {
+  margin-top: .875rem;
+  border-top: 1px solid var(--borde);
+  padding-top: .875rem;
+}
+.bloque-entrada > summary {
+  cursor: pointer;
+  font-size: .875rem;
+  font-weight: 600;
+  color: var(--acento);
+  padding: .35rem 0;
+  list-style-position: inside;
+}
+
+/* ---------- Aviso positivo ---------- */
+
+.aviso-ok {
+  color: var(--exito);
+  font-weight: 500;
+}
+
+/* Etiqueta visible solo para lectores de pantalla. */
+.oculto-visual {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* La caja de pegado necesita más aire que un textarea de ajustes. */
+#campoPegado {
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.45;
+  min-height: 6.5rem;
+}
+#campoPegado::placeholder {
+  color: var(--texto-suave);
+  opacity: .8;
+}

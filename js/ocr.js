@@ -203,32 +203,92 @@ export function binarizarOtsu(canvas) {
 // Reconocimiento
 // ---------------------------------------------------------------------------
 
+// Umbral a partir del cual damos por buena la orientación actual sin probar
+// las demás. Calibrado con fotos reales: las bien orientadas rondan 63-84% y
+// las que están de lado caen a 37-49%.
+const CONFIANZA_SUFICIENTE = 70;
+const PALABRAS_SUFICIENTES = 15;
+
+/** Puntúa una lectura. Confianza sola no basta: un texto de 3 palabras puede
+ *  salir con 90% y ser inservible, así que pesamos también cuánto leyó. */
+function puntuar(datos) {
+  const palabras = datos.text.split(/\s+/).filter(p => p.length > 2).length;
+  return { palabras, puntaje: palabras * datos.confidence };
+}
+
 /**
- * Ejecuta el OCR sobre una imagen. Prueba primero con contraste normalizado y,
- * si el resultado sale con poca confianza, reintenta binarizando: son dos
- * preprocesados que fallan en situaciones distintas, así que uno suele
- * rescatar lo que el otro no pudo leer.
+ * Ejecuta el OCR sobre una imagen probando las cuatro orientaciones.
  *
- * @returns {Promise<{texto: string, confianza: number, canvas: HTMLCanvasElement}>}
+ * Hace falta porque las fotos llegan de todas las formas: la credencial
+ * acostada sobre la mesa, la captura de pantalla derecha, la tarjeta sostenida
+ * de lado. Se prueba primero la orientación indicada y, si el resultado ya es
+ * bueno, se evitan las otras tres para no gastar tiempo.
+ *
+ * @returns {Promise<{texto: string, confianza: number, rotacion: number}>}
  */
-export async function reconocer(archivo, { rotacion = 0, alProgresar = () => {} } = {}) {
+export async function reconocer(archivo, { rotacion = 'auto', alProgresar = () => {} } = {}) {
   const worker = await obtenerWorker(alProgresar);
+  const variantes = [];
 
-  const canvas = normalizarContraste(await imagenACanvas(archivo, rotacion));
-  const primera = await worker.recognize(canvas);
+  const leerEn = async (grados, filtro = normalizarContraste) => {
+    const canvas = filtro(await imagenACanvas(archivo, grados));
+    const { data } = await worker.recognize(canvas);
+    const { palabras, puntaje } = puntuar(data);
+    const lectura = { texto: data.text, confianza: data.confidence, rotacion: grados, palabras, puntaje };
+    variantes.push(lectura);
+    return lectura;
+  };
 
-  let mejor = { texto: primera.data.text, confianza: primera.data.confidence, canvas };
+  let mejor;
+  if (rotacion !== 'auto') {
+    // Rotación fija: el usuario ya la ajustó a mano con el botón de girar.
+    mejor = await leerEn(rotacion);
+  } else {
+    alProgresar(0, 'Buscando la orientación correcta');
+    mejor = await leerEn(0);
 
-  if (mejor.confianza < 70) {
-    alProgresar(0, 'Reintentando con otro filtro');
-    const canvasBin = binarizarOtsu(await imagenACanvas(archivo, rotacion));
-    const segunda = await worker.recognize(canvasBin);
-    if (segunda.data.confidence > mejor.confianza) {
-      mejor = { texto: segunda.data.text, confianza: segunda.data.confidence, canvas: canvasBin };
+    if (mejor.confianza < CONFIANZA_SUFICIENTE || mejor.palabras < PALABRAS_SUFICIENTES) {
+      for (const grados of [270, 90, 180]) {
+        alProgresar(0, `Probando orientación ${grados}°`);
+        const intento = await leerEn(grados);
+        if (intento.puntaje > mejor.puntaje) mejor = intento;
+      }
     }
   }
 
-  return mejor;
+  // El contraste normalizado y la binarización fallan en situaciones distintas
+  // (sombras duras vs. iluminación pareja), así que una rescata lo que la otra
+  // no pudo leer.
+  if (mejor.confianza < CONFIANZA_SUFICIENTE) {
+    alProgresar(0, 'Reintentando con otro filtro');
+    const alterna = await leerEn(mejor.rotacion, binarizarOtsu);
+    if (alterna.puntaje > mejor.puntaje) mejor = alterna;
+  }
+
+  return {
+    texto: mejor.texto,
+    confianza: mejor.confianza,
+    rotacion: mejor.rotacion,
+    textoAmpliado: unirVariantes(mejor, variantes),
+  };
+}
+
+// Proporción del mejor puntaje por debajo de la cual una lectura es basura y
+// solo aportaría ruido.
+const UMBRAL_VARIANTE_UTIL = 0.4;
+
+/**
+ * Une todas las lecturas aprovechables, la mejor primero.
+ *
+ * El analizador busca patrones en cualquier parte del texto, así que darle
+ * todo el material sube las probabilidades de encontrar cada campo: en las
+ * pruebas con fotos reales, un filtro perdía el número de licencia que el otro
+ * sí había leído. Como el orden importa (gana la primera coincidencia), la
+ * mejor lectura va al frente.
+ */
+function unirVariantes(mejor, variantes) {
+  const utiles = variantes.filter(v => v === mejor || v.puntaje >= mejor.puntaje * UMBRAL_VARIANTE_UTIL);
+  return [mejor, ...utiles.filter(v => v !== mejor)].map(v => v.texto).join('\n');
 }
 
 /**
@@ -238,21 +298,26 @@ export async function reconocer(archivo, { rotacion = 0, alProgresar = () => {} 
  * @param {Array<{archivo: Blob, rotacion?: number}>} imagenes
  */
 export async function reconocerVarias(imagenes, { alProgresar = () => {} } = {}) {
-  const partes = [];
+  const legibles = [];   // la mejor lectura de cada imagen, para mostrar
+  const ampliadas = [];  // todas las lecturas, para analizar
   let confianzaTotal = 0;
 
   for (let i = 0; i < imagenes.length; i++) {
     const etiqueta = imagenes.length > 1 ? `Imagen ${i + 1} de ${imagenes.length}` : '';
     const r = await reconocer(imagenes[i].archivo, {
-      rotacion: imagenes[i].rotacion || 0,
+      // Si el usuario giró la imagen a mano respetamos su decisión; si no,
+      // dejamos que el motor busque la orientación correcta.
+      rotacion: imagenes[i].rotacion ? imagenes[i].rotacion : 'auto',
       alProgresar: (p, estado) => alProgresar(p, etiqueta ? `${etiqueta} — ${estado}` : estado),
     });
-    partes.push(r.texto);
+    legibles.push(r.texto);
+    ampliadas.push(r.textoAmpliado);
     confianzaTotal += r.confianza;
   }
 
   return {
-    texto: partes.join('\n'),
+    texto: legibles.join('\n'),
+    textoAmpliado: ampliadas.join('\n'),
     confianza: imagenes.length ? confianzaTotal / imagenes.length : 0,
   };
 }
