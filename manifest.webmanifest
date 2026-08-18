@@ -1,0 +1,16 @@
+{
+  "name": "Registro de Acceso — Reservas",
+  "short_name": "Acceso",
+  "description": "Captura local de datos de huespedes para control de acceso en edificios",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "es-MX",
+  "icons": [
+    { "src": "assets/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "assets/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

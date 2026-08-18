@@ -1,0 +1,13 @@
+{
+  "name": "reserva-autonoma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Captura local de datos de huespedes para control de acceso",
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "start": "npx --yes serve . -l 5173",
+    "vendorizar": "node scripts/vendorizar-ocr.mjs",
+    "iconos": "node scripts/generar-iconos.mjs"
+  }
+}

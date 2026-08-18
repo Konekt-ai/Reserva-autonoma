@@ -1,0 +1,5 @@
+node_modules/
+# El motor de OCR (35 MB) se reconstruye con: npm run vendorizar
+vendor/
+*.log
+.DS_Store

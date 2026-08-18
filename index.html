@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f172a">
+  <title>Registro de Acceso — Reservas</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="cabecera">
+  <h1>Registro de Acceso</h1>
+  <p class="subtitulo" id="indicadorPrivacidad">Procesamiento local · la foto no sale de este dispositivo</p>
+</header>
+
+<nav class="pestanas" role="tablist">
+  <button class="pestana activa" data-vista="capturar" role="tab">Capturar</button>
+  <button class="pestana" data-vista="registro" role="tab">Registro</button>
+  <button class="pestana" data-vista="ajustes" role="tab">Ajustes</button>
+</nav>
+
+<main>
+
+  <!-- =================== CAPTURAR =================== -->
+  <section id="vista-capturar" class="vista activa">
+
+    <!-- Paso 1: imágenes -->
+    <div class="tarjeta">
+      <h2>1 · Fotos del huésped</h2>
+      <p class="ayuda">Sube la identificación y, si la mandó aparte, la foto de las placas. Puedes pegar con Ctrl+V.</p>
+
+      <label class="zona-soltar" id="zonaSoltar" tabindex="0">
+        <input type="file" id="entradaArchivos" accept="image/*" multiple hidden>
+        <span class="icono-soltar">📷</span>
+        <strong>Toca para elegir o arrastra las fotos aquí</strong>
+        <span class="ayuda">JPG, PNG o HEIC</span>
+      </label>
+
+      <div id="miniaturas" class="miniaturas"></div>
+
+      <button id="btnLeer" class="boton principal" disabled>Leer datos de las fotos</button>
+
+      <div id="progreso" class="progreso oculto">
+        <div class="barra"><div class="barra-relleno" id="barraRelleno"></div></div>
+        <span id="textoProgreso" class="ayuda"></span>
+      </div>
+    </div>
+
+    <!-- Paso 2: revisión -->
+    <div class="tarjeta oculto" id="tarjetaDatos">
+      <h2>2 · Revisa y completa</h2>
+
+      <div id="avisos" class="avisos"></div>
+
+      <div class="rejilla">
+        <label class="campo campo-ancho">
+          <span>Nombre completo</span>
+          <input type="text" id="campoNombre" autocomplete="off" placeholder="Como aparece en la identificación">
+        </label>
+
+        <label class="campo">
+          <span>Documento</span>
+          <select id="campoTipoDocumento">
+            <option value="">—</option>
+            <option>INE</option>
+            <option>Pasaporte</option>
+            <option>Licencia</option>
+            <option>Otro</option>
+          </select>
+        </label>
+
+        <label class="campo">
+          <span>Número / clave</span>
+          <input type="text" id="campoNumeroDocumento" autocomplete="off">
+        </label>
+
+        <label class="campo campo-ancho">
+          <span>CURP <small id="estadoCurp"></small></span>
+          <input type="text" id="campoCurp" autocomplete="off" maxlength="18" spellcheck="false">
+        </label>
+
+        <label class="campo">
+          <span>Placas</span>
+          <input type="text" id="campoPlacas" autocomplete="off" placeholder="ABC-123-D" spellcheck="false">
+        </label>
+
+        <label class="campo">
+          <span>Vehículo</span>
+          <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Mazda 3 gris">
+        </label>
+
+        <label class="campo">
+          <span>Propiedad / unidad</span>
+          <input type="text" id="campoPropiedad" list="listaPropiedades" autocomplete="off" placeholder="Torre B — 1204">
+          <datalist id="listaPropiedades"></datalist>
+        </label>
+
+        <label class="campo">
+          <span>Personas</span>
+          <input type="number" id="campoPersonas" min="1" value="1">
+        </label>
+
+        <label class="campo">
+          <span>Check-in</span>
+          <input type="date" id="campoCheckin">
+        </label>
+
+        <label class="campo">
+          <span>Check-out</span>
+          <input type="date" id="campoCheckout">
+        </label>
+
+        <label class="campo campo-ancho">
+          <span>Código de reserva</span>
+          <input type="text" id="campoReserva" autocomplete="off" placeholder="HMABC123XY">
+        </label>
+      </div>
+
+      <details class="detalle-ocr">
+        <summary>Ver texto crudo que leyó el OCR</summary>
+        <pre id="textoCrudo"></pre>
+      </details>
+    </div>
+
+    <!-- Paso 3: enviar -->
+    <div class="tarjeta oculto" id="tarjetaMensaje">
+      <h2>3 · Mensaje para seguridad</h2>
+      <pre id="vistaPrevia" class="vista-previa"></pre>
+
+      <div class="acciones">
+        <button id="btnCopiar" class="boton principal">📋 Copiar</button>
+        <button id="btnWhatsApp" class="boton secundario">💬 Abrir WhatsApp</button>
+      </div>
+      <p class="ayuda">WhatsApp no permite abrir un grupo directo desde un enlace: se abrirá con el mensaje ya escrito y eliges el grupo de seguridad.</p>
+
+      <div class="acciones">
+        <button id="btnGuardar" class="boton terciario">Guardar en el registro</button>
+        <button id="btnNuevo" class="boton terciario">Empezar otro</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== REGISTRO =================== -->
+  <section id="vista-registro" class="vista">
+    <div class="tarjeta">
+      <h2>Resumen del día</h2>
+      <label class="campo">
+        <span>Fecha</span>
+        <input type="date" id="campoFechaResumen">
+      </label>
+      <pre id="vistaResumen" class="vista-previa"></pre>
+      <div class="acciones">
+        <button id="btnCopiarResumen" class="boton principal">📋 Copiar resumen</button>
+        <button id="btnWhatsAppResumen" class="boton secundario">💬 WhatsApp</button>
+      </div>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Historial</h2>
+      <input type="search" id="campoBuscar" class="buscador" placeholder="Buscar por nombre, placas o unidad…">
+      <div id="listaRegistros" class="lista-registros"></div>
+      <div class="acciones">
+        <button id="btnExportar" class="boton terciario">Exportar CSV</button>
+        <button id="btnBorrarTodo" class="boton peligro">Borrar todo</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================== AJUSTES =================== -->
+  <section id="vista-ajustes" class="vista">
+    <div class="tarjeta">
+      <h2>Mensaje a seguridad</h2>
+      <label class="campo campo-ancho">
+        <span>Plantilla</span>
+        <textarea id="campoPlantilla" rows="10" spellcheck="false"></textarea>
+      </label>
+      <p class="ayuda">
+        Marcadores disponibles: <code>{{nombre}}</code> <code>{{placas}}</code>
+        <code>{{vehiculo}}</code> <code>{{propiedad}}</code> <code>{{checkin}}</code>
+        <code>{{checkout}}</code> <code>{{personas}}</code> <code>{{reserva}}</code>
+        <code>{{tipoDocumento}}</code> <code>{{numeroDocumento}}</code> <code>{{curp}}</code>.
+        Los renglones sin datos se eliminan solos.
+      </p>
+      <button id="btnRestablecerPlantilla" class="boton terciario">Restablecer plantilla</button>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Propiedades</h2>
+      <label class="campo campo-ancho">
+        <span>Una por renglón</span>
+        <textarea id="campoPropiedades" rows="5" placeholder="Torre A — 501&#10;Torre B — 1204"></textarea>
+      </label>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Privacidad y datos</h2>
+      <label class="campo">
+        <span>Borrar registros después de (días)</span>
+        <input type="number" id="campoRetencion" min="0" max="365">
+      </label>
+      <p class="ayuda">
+        0 desactiva el borrado automático. Las fotos <strong>nunca</strong> se guardan:
+        se descartan al terminar cada captura. Solo se conserva el texto extraído.
+      </p>
+      <label class="campo campo-ancho">
+        <span>Teléfono de seguridad (opcional)</span>
+        <input type="tel" id="campoTelefono" placeholder="52155…">
+      </label>
+      <p class="ayuda">Si lo llenas, el botón de WhatsApp abre ese chat directo en vez del selector. Déjalo vacío para elegir el grupo.</p>
+    </div>
+
+    <div class="tarjeta">
+      <h2>Aviso de privacidad</h2>
+      <p class="ayuda">
+        Esta herramienta trata datos personales de identificación. Para cumplir con la
+        LFPDPPP, tu huésped debe conocer para qué se recaban sus datos, quién los
+        recibe y por cuánto tiempo se conservan. Comparte un aviso de privacidad
+        junto con la solicitud de documentos, y manda a seguridad únicamente el
+        nombre y las placas — no la imagen de la identificación.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<div id="brindis" class="brindis"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
