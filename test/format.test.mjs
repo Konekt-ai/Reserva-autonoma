@@ -187,3 +187,56 @@ test('el CSV escapa comillas y comas', () => {
   const csv = aCSV([{ ...RESERVA, personas: [{ nombre: 'PEREZ, JUAN "EL CHATO"', esResponsable: true }] }]);
   assert.match(csv, /"PEREZ, JUAN ""EL CHATO"""/);
 });
+
+// ---------------------------------------------------------------------------
+// Unidad y fechas son opcionales: vienen de Airbnb, no del huésped
+// ---------------------------------------------------------------------------
+
+test('sin unidad ni fechas el mensaje arranca por el responsable', () => {
+  const salida = mensajeDeReserva({ ...RESERVA, propiedad: '', fechaInicio: '', fechaFin: '' });
+  assert.equal(salida, [
+    'Responsable: Ana Ruiz',
+    'Otros huéspedes:',
+    'Luis Ruiz',
+    'Diego Andres Castillo',
+    'Placas: No traen auto',
+  ].join('\n'));
+});
+
+test('no inventa un renglón de fechas vacío', () => {
+  const salida = mensajeDeReserva({ ...RESERVA, fechaInicio: '', fechaFin: '' });
+  assert.ok(!salida.includes('Fechas:'), `quedó el renglón vacío:\n${salida}`);
+  assert.match(salida, /^Departamento 606 Torre 2/);
+});
+
+test('el resumen usa la fecha de captura cuando no hay fecha de llegada', () => {
+  const sinFecha = {
+    propiedad: '',
+    fechaInicio: '',
+    capturadoEn: '2026-08-20T18:30:00.000Z',
+    sinAuto: true,
+    personas: [{ nombre: 'Sofia Herrera', esResponsable: true }],
+  };
+  const salida = resumenDelDia([sinFecha], '2026-08-20');
+  assert.match(salida, /Sofia Herrera/);
+  assert.match(salida, /1 reserva\(s\)/);
+});
+
+test('el resumen no mezcla reservas capturadas otro día', () => {
+  const sinFecha = {
+    fechaInicio: '',
+    capturadoEn: '2026-08-19T18:30:00.000Z',
+    personas: [{ nombre: 'Sofia Herrera', esResponsable: true }],
+  };
+  assert.match(resumenDelDia([sinFecha], '2026-08-20'), /sin reservas/);
+});
+
+test('una reserva con fecha de llegada sigue mandando sobre la de captura', () => {
+  const conFecha = {
+    fechaInicio: '2026-08-22',
+    capturadoEn: '2026-08-20T18:30:00.000Z',
+    personas: [{ nombre: 'Sofia Herrera', esResponsable: true }],
+  };
+  assert.match(resumenDelDia([conFecha], '2026-08-20'), /sin reservas/);
+  assert.match(resumenDelDia([conFecha], '2026-08-22'), /Sofia Herrera/);
+});

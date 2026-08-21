@@ -190,7 +190,14 @@ export async function copiarAlPortapapeles(texto) {
  * día, que es lo que realmente le sirve al equipo en la caseta.
  */
 export function resumenDelDia(reservas, fechaISO) {
-  const delDia = reservas.filter(r => r.fechaInicio === fechaISO);
+  // La fecha de llegada es opcional: viene de Airbnb, no del huésped, y puede
+  // quedar vacía. Para esas reservas usamos el día en que se capturaron, que
+  // en la práctica es el mismo o el de la víspera.
+  const delDia = reservas.filter(r => (
+    r.fechaInicio
+      ? r.fechaInicio === fechaISO
+      : (r.capturadoEn || '').slice(0, 10) === fechaISO
+  ));
   const fechaLegible = formatearRangoFechas(fechaISO, fechaISO);
 
   if (delDia.length === 0) {

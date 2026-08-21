@@ -15,11 +15,17 @@ const $ = id => document.getElementById(id);
 
 let siguienteId = 1;
 
-/** Reserva vacía. Una reserva agrupa a todas las personas que entran juntas. */
+/**
+ * Reserva vacía. Una reserva agrupa a todas las personas que entran juntas.
+ *
+ * La unidad y las fechas quedan vacías a propósito: no son datos que el
+ * huésped mande, sino que ya vienen de Airbnb. Poner la fecha de hoy por
+ * omisión metería en el mensaje a seguridad un dato que nadie escribió.
+ */
 function reservaVacia() {
   return {
     propiedad: '',
-    fechaInicio: hoyISO(),
+    fechaInicio: '',
     fechaFin: '',
     placas: '',
     vehiculo: '',
@@ -528,6 +534,7 @@ function reiniciarReserva() {
   $('textoCrudo').textContent = '';
   $('bloqueFoto').open = false;
   $('bloqueTexto').open = true;
+  $('bloqueAirbnb').open = false;
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 

@@ -1,36 +1,66 @@
-/* styles.css — Móvil primero: la clienta trabaja desde el celular. */
+/* styles.css — Móvil primero: la clienta trabaja desde el celular.
+ *
+ * Paleta tomada de Airbnb, que es donde ella pasa el día: el rojo Rausch como
+ * acento, grises cálidos y bordes suaves. No se usa tipografía web: la app
+ * tiene que abrir sin conexión, y una fuente descargada rompería esa promesa,
+ * así que se usa la del sistema con el mismo espíritu geométrico. */
 
 :root {
-  --fondo: #f1f5f9;
+  --fondo: #f7f7f7;
   --superficie: #ffffff;
-  --borde: #e2e8f0;
-  --texto: #0f172a;
-  --texto-suave: #64748b;
-  --acento: #0f766e;
-  --acento-fuerte: #115e59;
-  --aviso-fondo: #fef3c7;
-  --aviso-borde: #fbbf24;
-  --aviso-texto: #78350f;
-  --exito: #059669;
-  --peligro: #dc2626;
+  --borde: #dddddd;
+  --borde-suave: #ebebeb;
+  --texto: #222222;
+  --texto-suave: #717171;
+  --acento: #ff385c;          /* Rausch */
+  --acento-fuerte: #d70466;
+  --acento-tenue: #fff0f3;
+  --aviso-fondo: #fff8e6;
+  --aviso-borde: #f0c14b;
+  --aviso-texto: #7a5c11;
+  --exito: #008a05;
+  --peligro: #c13515;
   --radio: 12px;
-  --sombra: 0 1px 3px rgba(15, 23, 42, .08), 0 1px 2px rgba(15, 23, 42, .04);
+  --radio-chico: 8px;
+  --sombra: 0 1px 2px rgba(0, 0, 0, .08), 0 4px 12px rgba(0, 0, 0, .05);
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --fondo: #0f172a;
-    --superficie: #1e293b;
-    --borde: #334155;
-    --texto: #f1f5f9;
-    --texto-suave: #94a3b8;
-    --acento: #14b8a6;
-    --acento-fuerte: #0d9488;
-    --aviso-fondo: #422006;
-    --aviso-borde: #a16207;
-    --aviso-texto: #fde68a;
-    --sombra: none;
+  :root:not([data-theme="light"]) {
+    --fondo: #1a1a1a;
+    --superficie: #242424;
+    --borde: #3d3d3d;
+    --borde-suave: #2f2f2f;
+    --texto: #ebebeb;
+    --texto-suave: #a3a3a3;
+    --acento: #ff5a70;
+    --acento-fuerte: #ff385c;
+    --acento-tenue: #331a1f;
+    --aviso-fondo: #33280f;
+    --aviso-borde: #8a6d20;
+    --aviso-texto: #f5d98a;
+    --exito: #35c759;
+    --peligro: #ff7a66;
+    --sombra: 0 1px 2px rgba(0, 0, 0, .4);
   }
+}
+
+:root[data-theme="dark"] {
+  --fondo: #1a1a1a;
+  --superficie: #242424;
+  --borde: #3d3d3d;
+  --borde-suave: #2f2f2f;
+  --texto: #ebebeb;
+  --texto-suave: #a3a3a3;
+  --acento: #ff5a70;
+  --acento-fuerte: #ff385c;
+  --acento-tenue: #331a1f;
+  --aviso-fondo: #33280f;
+  --aviso-borde: #8a6d20;
+  --aviso-texto: #f5d98a;
+  --exito: #35c759;
+  --peligro: #ff7a66;
+  --sombra: 0 1px 2px rgba(0, 0, 0, .4);
 }
 
 * { box-sizing: border-box; }
@@ -59,8 +89,8 @@ body {
 .subtitulo {
   margin: .25rem 0 0;
   font-size: .8125rem;
-  color: var(--exito);
-  font-weight: 500;
+  color: var(--texto-suave);
+  font-weight: 400;
 }
 
 .pestanas {
@@ -83,9 +113,9 @@ body {
   font-family: inherit;
 }
 .pestana.activa {
-  background: var(--acento);
-  border-color: var(--acento);
-  color: #fff;
+  background: var(--texto);
+  border-color: var(--texto);
+  color: var(--superficie);
 }
 
 main {
@@ -196,26 +226,56 @@ main {
   justify-content: center;
   gap: .4rem;
   width: 100%;
-  padding: .8rem 1rem;
+  padding: .85rem 1rem;
   margin-top: .75rem;
   border: 1px solid transparent;
-  border-radius: var(--radio);
+  border-radius: var(--radio-chico);
   font-size: .9375rem;
   font-weight: 600;
   font-family: inherit;
   cursor: pointer;
   transition: opacity .15s;
 }
-.boton:disabled { opacity: .45; cursor: not-allowed; }
+/* Deshabilitado en gris neutro: un acento desvaído se lee como un error de
+   render, no como un botón apagado. */
+.boton:disabled {
+  background: var(--borde-suave);
+  border-color: var(--borde);
+  color: var(--texto-suave);
+  cursor: not-allowed;
+}
 .boton:not(:disabled):active { opacity: .85; }
 
 .principal { background: var(--acento); color: #fff; }
-.secundario { background: #25d366; color: #0b3d20; }
+.principal:not(:disabled):hover { background: var(--acento-fuerte); }
+
+/* WhatsApp va delineado, no relleno: dos botones saturados uno junto al otro
+   compiten y ninguno se lee como la acción principal. El verde de marca sigue
+   presente, que es lo que hace reconocible el botón. */
+.secundario {
+  background: var(--superficie);
+  border-color: #25d366;
+  color: #128c3e;
+}
+.secundario:not(:disabled):hover { background: #f0fbf3; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .secundario { color: #4ade80; }
+  :root:not([data-theme="light"]) .secundario:not(:disabled):hover { background: #16301f; }
+}
+:root[data-theme="dark"] .secundario { color: #4ade80; }
+:root[data-theme="dark"] .secundario:not(:disabled):hover { background: #16301f; }
 .terciario {
-  background: transparent;
-  border-color: var(--borde);
+  background: var(--superficie);
+  border-color: var(--texto);
   color: var(--texto);
 }
+/* En oscuro un borde blanco pesa tanto como un botón principal y compite con
+   él; el borde neutro mantiene la jerarquía. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .terciario { border-color: var(--borde); }
+}
+:root[data-theme="dark"] .terciario { border-color: var(--borde); }
 .peligro {
   background: transparent;
   border-color: var(--peligro);
@@ -269,9 +329,9 @@ main {
 .campo select,
 .campo textarea {
   width: 100%;
-  padding: .6rem .7rem;
+  padding: .7rem .8rem;
   border: 1px solid var(--borde);
-  border-radius: 8px;
+  border-radius: var(--radio-chico);
   background: var(--fondo);
   color: var(--texto);
   font-size: 1rem; /* 16px evita el zoom automático en iOS */
@@ -285,8 +345,9 @@ main {
 .campo input:focus,
 .campo select:focus,
 .campo textarea:focus {
-  outline: 2px solid var(--acento);
+  outline: 2px solid var(--texto);
   outline-offset: -1px;
+  border-color: var(--texto);
 }
 .campo input.revisar {
   border-color: var(--aviso-borde);
@@ -370,7 +431,7 @@ main {
   align-items: flex-start;
   gap: .75rem;
   padding: .75rem 0;
-  border-bottom: 1px solid var(--borde);
+  border-bottom: 1px solid var(--borde-suave);
 }
 .registro:last-child { border-bottom: 0; }
 .registro-datos { flex: 1; min-width: 0; }
@@ -440,8 +501,8 @@ main {
   display: flex;
   align-items: center;
   gap: .6rem;
-  padding: .6rem 0;
-  border-bottom: 1px solid var(--borde);
+  padding: .65rem 0;
+  border-bottom: 1px solid var(--borde-suave);
 }
 .persona:last-child { border-bottom: 0; }
 
@@ -466,8 +527,9 @@ main {
   font-family: inherit;
 }
 .persona-centro input[type="text"]:focus {
-  outline: 2px solid var(--acento);
+  outline: 2px solid var(--texto);
   outline-offset: -1px;
+  border-color: var(--texto);
 }
 .persona-centro input.revisar {
   border-color: var(--aviso-borde);
@@ -550,6 +612,7 @@ main {
   padding: .35rem 0;
   list-style-position: inside;
 }
+.bloque-entrada > summary:hover { color: var(--acento-fuerte); }
 
 /* ---------- Aviso positivo ---------- */
 

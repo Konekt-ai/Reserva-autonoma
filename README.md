@@ -17,14 +17,17 @@ credenciales, o la pantalla de un celular mostrando una identificación).
 Salida, lista para copiar o mandar por WhatsApp:
 
 ```
-Departamento 606 Torre 2
-Fechas: 16-17 agosto
 Responsable: Ana Ruiz
 Otros huéspedes:
 Luis Ruiz
 Diego Andres Castillo
 Placas: No traen auto
 ```
+
+La herramienta se ocupa de **quién entra y en qué coche**, que es lo único que
+el huésped manda por el chat. La unidad y las fechas no las escribe él: ya
+están en Airbnb. Se pueden agregar al mensaje desde el bloque «Agregar unidad
+y fechas», y si se dejan vacías esos renglones simplemente no aparecen.
 
 El formato es configurable en **Ajustes**; el de arriba es el que ya se usaba
 a mano, para que el equipo de seguridad no tenga que acostumbrarse a nada.
@@ -155,16 +158,17 @@ contraseña en Settings → Deployment Protection.
 
 ## Cómo se usa
 
-**1 · Datos de la reserva** — Unidad, fechas y vehículo. Si el huésped avisó
-que no lleva coche, la casilla se marca sola al leer la captura del chat.
+**1 · Personas que ingresan** — Es de lo que trata toda la herramienta. Cada
+texto pegado o foto leída agrega una persona a la lista. El botón de radio
+marca quién es el **responsable**; el resto quedan como acompañantes. También
+se puede agregar a alguien a mano.
 
-**2 · Personas que ingresan** — Una reserva agrupa a todas las personas que
-entran juntas. Cada texto pegado o foto leída agrega una persona a la lista.
-El botón de radio marca quién es el **responsable**; el resto quedan como
-acompañantes. También se puede agregar a alguien a mano.
+**2 · Vehículo** — Placas, modelo, o la casilla de «no traen auto», que se
+marca sola cuando el huésped lo avisa en el chat. Este dato sí lo manda él.
 
 **3 · Mensaje** — `📋 Copiar` deja el texto en el portapapeles.
-`💬 Abrir WhatsApp` abre la app con el mensaje ya escrito.
+`💬 Abrir WhatsApp` abre la app con el mensaje ya escrito. Ahí mismo está el
+bloque plegable para agregar unidad y fechas cuando hagan falta.
 
 > WhatsApp **no permite** que un enlace apunte a un grupo específico: es una
 > limitación de la plataforma, no de esta herramienta. El botón abre WhatsApp
@@ -343,7 +347,7 @@ documentos.
 
 ```
 index.html                    interfaz completa (3 pestañas)
-css/styles.css                estilos, móvil primero, claro y oscuro
+css/styles.css                paleta Airbnb, móvil primero, claro y oscuro
 js/
   app.js                      orquestación y estado
   ocr.js                      Tesseract WASM, rotación automática, preprocesado

@@ -26,53 +26,9 @@
   <!-- =================== RESERVA =================== -->
   <section id="vista-capturar" class="vista activa">
 
-    <!-- Paso 1: datos de la reserva -->
+    <!-- Paso 1: personas — es de lo que trata toda la herramienta -->
     <div class="tarjeta">
-      <h2>1 · Datos de la reserva</h2>
-
-      <div class="rejilla">
-        <label class="campo campo-ancho">
-          <span>Unidad</span>
-          <input type="text" id="campoPropiedad" list="listaPropiedades" autocomplete="off"
-                 placeholder="Departamento 606 Torre 2">
-          <datalist id="listaPropiedades"></datalist>
-        </label>
-
-        <label class="campo">
-          <span>Llegada</span>
-          <input type="date" id="campoFechaInicio">
-        </label>
-
-        <label class="campo">
-          <span>Salida</span>
-          <input type="date" id="campoFechaFin">
-        </label>
-
-        <label class="campo campo-ancho casilla">
-          <input type="checkbox" id="campoSinAuto">
-          <span class="etiqueta-casilla">No traen auto</span>
-        </label>
-
-        <label class="campo">
-          <span>Placas</span>
-          <input type="text" id="campoPlacas" autocomplete="off" placeholder="ABC-123-D" spellcheck="false">
-        </label>
-
-        <label class="campo">
-          <span>Vehículo</span>
-          <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Nissan Versa 2022">
-        </label>
-
-        <label class="campo campo-ancho">
-          <span>Código de reserva <small>(opcional)</small></span>
-          <input type="text" id="campoCodigo" autocomplete="off" placeholder="HMABC123XY">
-        </label>
-      </div>
-    </div>
-
-    <!-- Paso 2: personas -->
-    <div class="tarjeta">
-      <h2>2 · Personas que ingresan</h2>
+      <h2>1 · Personas que ingresan</h2>
 
       <div id="listaPersonas" class="lista-personas"></div>
 
@@ -135,10 +91,65 @@
       </details>
     </div>
 
+    <!-- Paso 2: vehículo — este dato sí lo manda el huésped -->
+    <div class="tarjeta">
+      <h2>2 · Vehículo</h2>
+
+      <label class="campo campo-ancho casilla">
+        <input type="checkbox" id="campoSinAuto">
+        <span class="etiqueta-casilla">No traen auto</span>
+      </label>
+
+      <div class="rejilla">
+        <label class="campo">
+          <span>Placas</span>
+          <input type="text" id="campoPlacas" autocomplete="off" placeholder="ABC-123-D" spellcheck="false">
+        </label>
+
+        <label class="campo">
+          <span>Vehículo</span>
+          <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Nissan Versa 2022">
+        </label>
+      </div>
+      <p class="ayuda">Se llena solo cuando el huésped lo escribe en el chat.</p>
+    </div>
+
     <!-- Paso 3: mensaje -->
     <div class="tarjeta">
       <h2>3 · Mensaje para seguridad</h2>
       <pre id="vistaPrevia" class="vista-previa"></pre>
+
+      <details class="bloque-entrada" id="bloqueAirbnb">
+        <summary>Agregar unidad y fechas</summary>
+        <p class="ayuda">
+          Estos datos no los manda el huésped: ya los tienes en Airbnb. Si los
+          dejas vacíos, esos renglones simplemente no aparecen en el mensaje.
+        </p>
+
+        <div class="rejilla">
+          <label class="campo campo-ancho">
+            <span>Unidad</span>
+            <input type="text" id="campoPropiedad" list="listaPropiedades" autocomplete="off"
+                   placeholder="Departamento 606 Torre 2">
+            <datalist id="listaPropiedades"></datalist>
+          </label>
+
+          <label class="campo">
+            <span>Llegada</span>
+            <input type="date" id="campoFechaInicio">
+          </label>
+
+          <label class="campo">
+            <span>Salida</span>
+            <input type="date" id="campoFechaFin">
+          </label>
+
+          <label class="campo campo-ancho">
+            <span>Código de reserva <small>(opcional)</small></span>
+            <input type="text" id="campoCodigo" autocomplete="off" placeholder="HMABC123XY">
+          </label>
+        </div>
+      </details>
 
       <div class="acciones">
         <button id="btnCopiar" class="boton principal">📋 Copiar</button>
