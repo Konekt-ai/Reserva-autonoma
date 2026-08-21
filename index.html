@@ -26,63 +26,42 @@
   <!-- =================== RESERVA =================== -->
   <section id="vista-capturar" class="vista activa">
 
-    <!-- Paso 1: personas — es de lo que trata toda la herramienta -->
+    <!-- Paso 1: pegar. Es la única acción que la clienta tiene que hacer. -->
     <div class="tarjeta">
-      <h2>1 · Personas que ingresan</h2>
+      <h2>1 · Pega lo que te mandó el huésped</h2>
 
-      <div id="listaPersonas" class="lista-personas"></div>
+      <label class="campo campo-ancho">
+        <span class="oculto-visual">Texto copiado del chat de Airbnb</span>
+        <textarea id="campoPegado" rows="6" spellcheck="false"
+                  placeholder="Copia el mensaje en el chat de Airbnb y pégalo aquí (Ctrl+V en cualquier parte de la página).&#10;&#10;Nombre completo de cada persona que ingresa:&#10;1. Ana Ruiz&#10;2. Luis Díaz&#10;&#10;Placas del auto: ABC-123-D&#10;Auto: Nissan Versa 2022 blanco"></textarea>
+      </label>
 
-      <button id="btnAgregarManual" class="boton terciario">+ Agregar persona a mano</button>
-
-      <details class="bloque-entrada" id="bloqueTexto" open>
-        <summary>Pegar texto copiado de Airbnb</summary>
-
-        <p class="ayuda">
-          Selecciona el mensaje en el chat de Airbnb, cópialo y pégalo aquí.
-          Es más exacto que la foto porque no hay que adivinar ninguna letra.
-        </p>
-
-        <label class="campo campo-ancho">
-          <span class="oculto-visual">Texto pegado del chat</span>
-          <textarea id="campoPegado" rows="5" spellcheck="false"
-                    placeholder="Pega aquí lo que copiaste del chat…&#10;&#10;Ejemplo:&#10;Hola, somos Ana Ruiz y Luis Díaz.&#10;Nissan Versa 2022, placas: ABC-123-D"></textarea>
-        </label>
-
-        <div class="acciones">
-          <button id="btnLeerPegado" class="boton principal" disabled>Leer datos</button>
-          <button id="btnLeerNombres" class="boton terciario" disabled>Solo son nombres</button>
-        </div>
-        <p class="ayuda">
-          <strong>Leer datos</strong> saca placas, vehículo y la persona del mensaje.
-          <strong>Solo son nombres</strong> toma cada renglón como una persona distinta.
-        </p>
-      </details>
+      <button id="btnProcesar" class="boton principal" disabled>Procesar mensaje</button>
 
       <details class="bloque-entrada" id="bloqueFoto">
-        <summary>Leer una identificación desde foto</summary>
+        <summary>El huésped solo mandó fotos</summary>
 
         <p class="ayuda">
-          Sirve la captura del chat de Airbnb, la foto de la credencial o la
-          pantalla del celular. Se detecta la orientación sola.
+          Sube las identificaciones y se leen con OCR. Sirve la captura del chat,
+          la foto de la credencial o la pantalla del celular; la orientación se
+          detecta sola. Las fotos quedan listas para reenviarlas al grupo.
         </p>
 
         <label class="zona-soltar" id="zonaSoltar" tabindex="0">
           <input type="file" id="entradaArchivos" accept="image/*" multiple hidden>
           <span class="icono-soltar">📷</span>
           <strong>Toca para elegir o arrastra las fotos</strong>
-          <span class="ayuda">También puedes pegar con Ctrl+V</span>
+          <span class="ayuda">También puedes pegarlas con Ctrl+V</span>
         </label>
 
         <div id="miniaturas" class="miniaturas"></div>
 
-        <button id="btnLeer" class="boton principal" disabled>Leer y agregar persona</button>
+        <button id="btnLeer" class="boton terciario" disabled>Leer identificaciones</button>
 
         <div id="progreso" class="progreso oculto">
           <div class="barra"><div class="barra-relleno" id="barraRelleno"></div></div>
           <span id="textoProgreso" class="ayuda"></span>
         </div>
-
-        <div id="avisos" class="avisos"></div>
 
         <details class="detalle-ocr">
           <summary>Ver texto crudo que leyó el OCR</summary>
@@ -91,9 +70,17 @@
       </details>
     </div>
 
-    <!-- Paso 2: vehículo — este dato sí lo manda el huésped -->
+    <!-- Paso 2: revisar lo que salió -->
     <div class="tarjeta">
-      <h2>2 · Vehículo</h2>
+      <h2>2 · Revisa</h2>
+
+      <div id="avisos" class="avisos"></div>
+
+      <div id="listaPersonas" class="lista-personas"></div>
+
+      <button id="btnAgregarManual" class="boton terciario">+ Agregar persona</button>
+
+      <div class="separador"></div>
 
       <label class="campo campo-ancho casilla">
         <input type="checkbox" id="campoSinAuto">
@@ -111,7 +98,6 @@
           <input type="text" id="campoVehiculo" autocomplete="off" placeholder="Nissan Versa 2022">
         </label>
       </div>
-      <p class="ayuda">Se llena solo cuando el huésped lo escribe en el chat.</p>
     </div>
 
     <!-- Paso 3: mensaje -->
@@ -160,9 +146,21 @@
         el mensaje ya escrito y eliges el grupo de seguridad.
       </p>
 
+      <div id="bloqueFotos" class="bloque-fotos oculto">
+        <div class="separador"></div>
+        <h3 class="titulo-menor">Identificaciones para el grupo</h3>
+        <div id="miniaturasEnvio" class="miniaturas"></div>
+        <button id="btnCompartirFotos" class="boton secundario">🖼️ Compartir las fotos</button>
+        <p class="ayuda" id="ayudaCompartir">
+          Abre el mismo selector de WhatsApp, ahora con las imágenes adjuntas.
+        </p>
+      </div>
+
+      <div class="separador"></div>
+
       <div class="acciones">
         <button id="btnGuardar" class="boton terciario">Guardar en el registro</button>
-        <button id="btnNuevo" class="boton terciario">Nueva reserva</button>
+        <button id="btnNuevo" class="boton terciario">Empezar otra</button>
       </div>
     </div>
   </section>

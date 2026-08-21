@@ -25,7 +25,8 @@ Placas: No traen auto
 ```
 
 La herramienta se ocupa de **quién entra y en qué coche**, que es lo único que
-el huésped manda por el chat. La unidad y las fechas no las escribe él: ya
+el huésped manda por el chat. Si además llegaron fotos de identificación,
+quedan listas para reenviarlas al mismo grupo. La unidad y las fechas no las escribe él: ya
 están en Airbnb. Se pueden agregar al mensaje desde el bloque «Agregar unidad
 y fechas», y si se dejan vacías esos renglones simplemente no aparecen.
 
@@ -33,25 +34,6 @@ El formato es configurable en **Ajustes**; el de arriba es el que ya se usaba
 a mano, para que el equipo de seguridad no tenga que acostumbrarse a nada.
 
 ---
-
-## Dos formas de capturar
-
-**Pegar texto (principal).** Se copia el mensaje del chat de Airbnb y se pega
-en la aplicación — con `Ctrl+V` en cualquier parte de la página, sin apuntarle
-a ninguna caja. El texto copiado llega sin errores, así que este camino es
-mucho más exacto que la foto: no hay ninguna letra que adivinar. De ahí salen
-las placas, el vehículo, el aviso de que no llevan coche y el nombre de quien
-escribe.
-
-Hay dos botones porque son dos cosas distintas:
-
-- **Leer datos** — analiza el mensaje del huésped y agrega una persona.
-- **Solo son nombres** — trata cada renglón como una persona distinta. Sirve
-  para la lista de acompañantes; entiende viñetas, numeración y encabezados
-  como «Otros huéspedes:», y descarta lo que claramente no es un nombre.
-
-**Leer desde foto (respaldo).** Para cuando solo llega la imagen de la
-identificación. Usa OCR local; la orientación se detecta sola.
 
 ## Qué documentos entiende
 
@@ -158,28 +140,35 @@ contraseña en Settings → Deployment Protection.
 
 ## Cómo se usa
 
-**1 · Personas que ingresan** — Es de lo que trata toda la herramienta. Cada
-texto pegado o foto leída agrega una persona a la lista. El botón de radio
-marca quién es el **responsable**; el resto quedan como acompañantes. También
-se puede agregar a alguien a mano.
+Tres pasos, y el único que exige trabajo es el primero:
 
-**2 · Vehículo** — Placas, modelo, o la casilla de «no traen auto», que se
-marca sola cuando el huésped lo avisa en el chat. Este dato sí lo manda él.
+**1 · Pega lo que te mandó el huésped.** Copias su mensaje en el chat de
+Airbnb y lo pegas — con `Ctrl+V` en cualquier parte de la página, sin apuntarle
+a ninguna caja. Un solo botón, **Procesar mensaje**, saca de ahí la lista de
+personas, las placas, el vehículo y el aviso de que no llevan coche. No hay que
+elegir entre modos: el propio texto dice si trae una lista numerada, una frase
+suelta («somos Ana Ruiz y Luis Díaz») o la lectura de una credencial.
 
-**3 · Mensaje** — `📋 Copiar` deja el texto en el portapapeles.
-`💬 Abrir WhatsApp` abre la app con el mensaje ya escrito. Ahí mismo está el
-bloque plegable para agregar unidad y fechas cuando hagan falta.
+Si el huésped **solo mandó fotos**, se abre ese bloque y se leen con OCR local.
+Si dejó la plantilla a medio llenar, pasa con lo que haya: la herramienta
+prefiere un campo vacío antes que un dato inventado.
+
+**2 · Revisa.** La lista de personas, editable, y el vehículo. El botón de
+radio marca quién es el **responsable**; el resto quedan como acompañantes.
+
+**3 · Manda.** `📋 Copiar` deja el texto en el portapapeles y
+`💬 Abrir WhatsApp` abre la app con el mensaje ya escrito. Si subiste fotos,
+ahí mismo quedan listas para **compartirlas al grupo** sin volver a buscarlas
+en Airbnb. También está el bloque plegable para agregar unidad y fechas cuando
+hagan falta.
 
 > WhatsApp **no permite** que un enlace apunte a un grupo específico: es una
 > limitación de la plataforma, no de esta herramienta. El botón abre WhatsApp
-> con el texto listo y se elige el grupo de seguridad. Son dos toques y cero
-> escritura.
+> con el contenido listo y se elige el grupo de seguridad. Son dos toques y
+> cero escritura.
 
 **Registro** — Historial con búsqueda, exportación a CSV (una fila por
-persona) y un **resumen del día**: una sola lista con todas las entradas de la
-fecha, que suele ser lo que más le sirve al equipo en la caseta.
-
----
+persona) y un **resumen del día** con todas las entradas de la fecha.
 
 ## Precisión real
 

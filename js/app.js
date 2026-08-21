@@ -1,7 +1,7 @@
 // app.js — Orquestación de la interfaz.
 
 import { reconocerVarias } from './ocr.js';
-import { analizarTexto, validarCurp, nombresDeLista } from './parsers.js';
+import { procesarMensaje, validarCurp } from './parsers.js';
 import {
   PLANTILLA_POR_DEFECTO, mensajeDeReserva, enlaceWhatsApp, copiarAlPortapapeles,
   resumenDelDia, aCSV, hoyISO,
@@ -237,40 +237,35 @@ function actualizarVistaPrevia() {
 const campoPegado = $('campoPegado');
 
 function refrescarBotonesPegado() {
-  const vacio = campoPegado.value.trim() === '';
-  $('btnLeerPegado').disabled = vacio;
-  $('btnLeerNombres').disabled = vacio;
+  $('btnProcesar').disabled = campoPegado.value.trim() === '';
 }
 
 campoPegado.addEventListener('input', refrescarBotonesPegado);
 
-$('btnLeerPegado').addEventListener('click', () => {
+/**
+ * Vuelca en la reserva lo que salió del análisis. Es el único camino: no se le
+ * pide a la clienta que decida entre modos, porque el propio texto ya dice si
+ * trae una lista de nombres o la lectura de una credencial.
+ */
+function aplicarResultado(resultado) {
+  for (const persona of resultado.personas) agregarPersona(persona);
+  aplicarDatosDeReserva(resultado.vehiculo);
+  mostrarAvisos(resultado.avisos, resultado.personas[0] || {});
+  return resultado.personas.length;
+}
+
+$('btnProcesar').addEventListener('click', () => {
   const texto = campoPegado.value.trim();
   if (!texto) return;
 
-  const { datos, avisos } = analizarTexto(texto);
-
-  agregarPersona(datos);
-  aplicarDatosDeReserva(datos);
-  mostrarAvisos(avisos, datos);
+  const cuantas = aplicarResultado(procesarMensaje(texto));
 
   campoPegado.value = '';
   refrescarBotonesPegado();
-  avisar(`Agregado: ${datos.nombre || 'persona sin nombre'}`);
-});
-
-$('btnLeerNombres').addEventListener('click', () => {
-  const nombres = nombresDeLista(campoPegado.value);
-
-  if (nombres.length === 0) {
-    avisar('No se reconoció ningún nombre en ese texto.');
-    return;
-  }
-  for (const nombre of nombres) agregarPersona({ nombre });
-
-  campoPegado.value = '';
-  refrescarBotonesPegado();
-  avisar(`${nombres.length} persona(s) agregada(s).`);
+  dibujarMiniaturasEnvio();
+  avisar(cuantas
+    ? `${cuantas} persona(s) agregada(s).`
+    : 'No se reconoció ningún nombre — agrégalos a mano.');
 });
 
 // ---------------------------------------------------------------------------
@@ -288,12 +283,14 @@ function agregarImagenes(archivos) {
   }
   $('bloqueFoto').open = true;
   dibujarMiniaturas();
+  dibujarMiniaturasEnvio();
 }
 
 function quitarImagen(indice) {
   URL.revokeObjectURL(estado.imagenes[indice].url);
   estado.imagenes.splice(indice, 1);
   dibujarMiniaturas();
+  dibujarMiniaturasEnvio();
 }
 
 function limpiarImagenes() {
@@ -326,6 +323,7 @@ function dibujarMiniaturas() {
       e.preventDefault();
       img.rotacion = (img.rotacion + 90) % 360;
       dibujarMiniaturas();
+      dibujarMiniaturasEnvio();
     });
 
     const quitar = document.createElement('button');
@@ -391,7 +389,6 @@ document.addEventListener('paste', e => {
   const texto = e.clipboardData?.getData('text')?.trim();
   if (texto) {
     e.preventDefault();
-    $('bloqueTexto').open = true;
     campoPegado.value = campoPegado.value.trim()
       ? `${campoPegado.value.trim()}\n${texto}`
       : texto;
@@ -426,13 +423,11 @@ $('btnLeer').addEventListener('click', async () => {
 
     // El analizador recibe todas las variantes de lectura; la vista de texto
     // crudo muestra solo la mejor, que es la legible para una persona.
-    const { datos, avisos } = analizarTexto(textoAmpliado);
+    aplicarResultado(procesarMensaje(textoAmpliado));
 
-    agregarPersona(datos);
-    aplicarDatosDeReserva(datos);
-    mostrarAvisos(avisos, datos);
-
-    limpiarImagenes();
+    // Las fotos NO se descartan: el equipo de seguridad también las recibe, así
+    // que quedan a la mano en el paso de envío.
+    dibujarMiniaturasEnvio();
   } catch (error) {
     console.error(error);
     avisar(error.message || 'No se pudo leer la imagen.');
@@ -463,15 +458,15 @@ function aplicarDatosDeReserva(datos) {
   actualizarVistaPrevia();
 }
 
-function mostrarAvisos(avisos, datos) {
+function mostrarAvisos(avisos, persona) {
   const caja = $('avisos');
   caja.textContent = '';
 
   const lista = document.createElement('ul');
 
   // Confirmación positiva de lo que sí quedó verificado.
-  if (datos.curp) {
-    const v = validarCurp(datos.curp);
+  if (persona.curp) {
+    const v = validarCurp(persona.curp);
     if (v.valido) {
       const li = document.createElement('li');
       li.className = 'aviso-ok';
@@ -506,6 +501,81 @@ $('btnWhatsApp').addEventListener('click', () => {
   window.open(enlaceWhatsApp(mensajeActual(), estado.ajustes.telefonoSeguridad), '_blank');
 });
 
+// ---------------------------------------------------------------------------
+// Identificaciones para el grupo
+// ---------------------------------------------------------------------------
+//
+// El equipo de seguridad recibe las fotos además del mensaje. Compartirlas
+// desde aquí evita que la clienta tenga que ir a buscarlas al chat de Airbnb
+// otra vez.
+
+/** ¿El navegador puede pasarle archivos a otra aplicación? */
+function puedeCompartirArchivos(archivos) {
+  return typeof navigator.canShare === 'function'
+    && navigator.canShare({ files: archivos });
+}
+
+function dibujarMiniaturasEnvio() {
+  const bloque = $('bloqueFotos');
+  const contenedor = $('miniaturasEnvio');
+  contenedor.textContent = '';
+
+  bloque.classList.toggle('oculto', estado.imagenes.length === 0);
+  if (estado.imagenes.length === 0) return;
+
+  for (const [i, img] of estado.imagenes.entries()) {
+    const caja = document.createElement('div');
+    caja.className = 'miniatura';
+
+    const vista = document.createElement('img');
+    vista.src = img.url;
+    vista.alt = `Identificación ${i + 1}`;
+    vista.style.transform = `rotate(${img.rotacion}deg)`;
+
+    caja.append(vista);
+    contenedor.append(caja);
+  }
+
+  // Sin la API de compartir —típico en escritorio— el respaldo es descargarlas.
+  const archivos = estado.imagenes.map(i => i.archivo);
+  const boton = $('btnCompartirFotos');
+  if (puedeCompartirArchivos(archivos)) {
+    boton.textContent = `🖼️ Compartir ${archivos.length} foto(s)`;
+    $('ayudaCompartir').textContent =
+      'Abre el mismo selector de WhatsApp, ahora con las imágenes adjuntas.';
+  } else {
+    boton.textContent = `⬇️ Descargar ${archivos.length} foto(s)`;
+    $('ayudaCompartir').textContent =
+      'Este navegador no puede pasar archivos a otra app: se descargan y las adjuntas en WhatsApp.';
+  }
+}
+
+$('btnCompartirFotos').addEventListener('click', async () => {
+  const archivos = estado.imagenes.map(i => i.archivo);
+  if (archivos.length === 0) return;
+
+  if (puedeCompartirArchivos(archivos)) {
+    try {
+      await navigator.share({ files: archivos, text: mensajeActual() });
+      return;
+    } catch (error) {
+      // Cancelar el selector no es un error que valga la pena reportar.
+      if (error?.name === 'AbortError') return;
+      console.error(error);
+    }
+  }
+
+  for (const [i, img] of estado.imagenes.entries()) {
+    const url = URL.createObjectURL(img.archivo);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = `identificacion-${i + 1}.jpg`;
+    enlace.click();
+    URL.revokeObjectURL(url);
+  }
+  avisar(`${archivos.length} foto(s) descargada(s).`);
+});
+
 $('btnGuardar').addEventListener('click', async () => {
   if (estado.reserva.personas.length === 0) {
     avisar('Agrega al menos una persona antes de guardar.');
@@ -533,8 +603,8 @@ function reiniciarReserva() {
   $('avisos').textContent = '';
   $('textoCrudo').textContent = '';
   $('bloqueFoto').open = false;
-  $('bloqueTexto').open = true;
   $('bloqueAirbnb').open = false;
+  dibujarMiniaturasEnvio();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -719,6 +789,7 @@ async function iniciar() {
   cargarAjustesEnFormulario();
   volcarReservaEnFormulario();
   dibujarPersonas();
+  dibujarMiniaturasEnvio();
   actualizarVistaPrevia();
 
   // La purga automática corre al abrir: así la retención se cumple sola.

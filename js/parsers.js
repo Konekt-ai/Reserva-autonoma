@@ -552,7 +552,7 @@ export function extraerVehiculo(texto) {
 
 // Encabezados que anuncian una lista de personas: se quitan y lo que sigue en
 // el renglón todavía puede ser un nombre.
-const ENCABEZADO_DE_PERSONAS = /^(otros\s+hu[eé]spedes|hu[eé]spedes|acompa[ñn]antes|invitados|personas|nombres?|responsable|somos|van|entran)\s*:?\s*/i;
+const ENCABEZADO_DE_PERSONAS = /^(otros\s+hu[eé]spedes|hu[eé]spedes|acompa[ñn]antes|invitados|personas|nombres?|responsable)\s*:?\s*/i;
 
 // Etiquetas de otros campos del mensaje. Aquí se descarta el renglón COMPLETO:
 // al pegar un mensaje anterior, "Placas: No traen auto" no debe convertirse en
@@ -582,6 +582,15 @@ export function pareceNombre(linea) {
 
   const palabras = limpio.split(/[\s.]+/).filter(Boolean);
   if (palabras.length > 6) return false; // una frase, no un nombre
+
+  // Una palabra suelta de una letra delata prosa ("a entrar Ana Ruiz"), salvo
+  // que sea una inicial, que va en mayúscula ("Ana R. Ruiz").
+  if (palabras.some(p => p.length < 2 && p !== p.toUpperCase())) return false;
+
+  // Renglones de una credencial: "CALIFORNIA DRIVER LICENSE" pasaría todos los
+  // filtros anteriores porque son puras letras.
+  if (palabras.some(p => PALABRAS_NO_NOMBRE.has(normalizar(p)))) return false;
+
   return palabras.some(p => p.length >= 3);
 }
 
@@ -605,6 +614,49 @@ export function nombresDeLista(texto) {
     .filter(pareceNombre)
     .map(capitalizarNombre)
     .filter(nombre => (vistos.has(nombre) ? false : vistos.add(nombre)));
+}
+
+// Verbos con los que la gente enumera a sus acompañantes dentro de una frase.
+const ANUNCIA_ACOMPANANTES = /\b(?:somos|seremos|vamos|van|entran|entramos|ingresan|se\s+hospedan|iremos|llegamos|llegan)\b\s*:?\s*/gi;
+
+/**
+ * Saca los nombres escritos dentro de una frase: "Hola, somos Ana Ruiz y
+ * Luis Díaz". No todos responden con una lista ordenada, y este es el segundo
+ * modo más común.
+ *
+ * Exige que al menos una palabra venga con mayúscula inicial. Sin eso, "somos
+ * muy puntuales" pasaría todos los demás filtros y se convertiría en un
+ * huésped inexistente.
+ */
+export function nombresEnFrase(texto) {
+  const original = texto || '';
+  const vistos = new Set();
+  const salida = [];
+
+  ANUNCIA_ACOMPANANTES.lastIndex = 0;
+  let anuncio;
+  while ((anuncio = ANUNCIA_ACOMPANANTES.exec(original)) !== null) {
+    const resto = original
+      .slice(anuncio.index + anuncio[0].length)
+      .split(/[.\n]/)[0]
+      // "Van a entrar Ana Ruiz": el relleno entre el verbo y el primer nombre
+      // se lo llevaría pegado y arruinaría esa primera coincidencia.
+      .replace(/^\s*(?:a\s+)?(?:entrar|ingresar|llegar|estar|ser|pasar|hospedarse|quedarse)\s+/i, '');
+
+    for (const trozo of resto.split(/\s*[,:]\s*|\s+y\s+|\s+e\s+/i)) {
+      const candidato = limpiarEspacios(trozo).replace(/[!?¡¿:;]+$/, '');
+      if (!pareceNombre(candidato)) continue;
+      // En prosa, un nombre va con mayúscula; una palabra común, no.
+      if (!/(^|\s)[A-ZÁÉÍÓÚÜÑ]/.test(candidato)) continue;
+
+      const nombre = capitalizarNombre(candidato);
+      if (!vistos.has(nombre)) {
+        vistos.add(nombre);
+        salida.push(nombre);
+      }
+    }
+  }
+  return salida;
 }
 
 // ---------------------------------------------------------------------------
@@ -906,4 +958,73 @@ export function analizarTexto(texto) {
   }
 
   return { datos, avisos, placasAlternativas: placas.slice(1).map(p => p.placas) };
+}
+
+// ---------------------------------------------------------------------------
+// Entrada única
+// ---------------------------------------------------------------------------
+
+/** ¿La primera palabra del nombre coincide con la de otro? */
+function mismaPersona(a, b) {
+  const pila = s => normalizar(s).split(' ').filter(Boolean)[0] || '';
+  return pila(a) === pila(b);
+}
+
+/**
+ * Procesa de una sola pasada lo que la clienta pega o fotografía, sin que
+ * tenga que elegir entre modos.
+ *
+ * De un mensaje de chat saca la lista de acompañantes, las placas, el vehículo
+ * y el aviso de que no llevan coche. De la lectura de una credencial saca a la
+ * persona con su documento. Distinguir los dos casos es necesario porque los
+ * renglones de una credencial ("CALIFORNIA DRIVER LICENSE") parecen nombres si
+ * se los mira uno por uno.
+ *
+ * @returns {{personas: Array, vehiculo: Object, avisos: string[], esDocumento: boolean}}
+ */
+export function procesarMensaje(texto) {
+  const { datos, avisos } = analizarTexto(texto);
+  const esDocumento = RE_TEXTO_DE_DOCUMENTO.test(normalizar(texto));
+
+  // De una credencial sale una persona con su documento; de un mensaje escrito,
+  // la lista completa de quienes van a entrar — ya venga en renglones o dentro
+  // de una frase.
+  let personas = [];
+  if (!esDocumento) {
+    const nombres = nombresDeLista(texto);
+    personas = (nombres.length ? nombres : nombresEnFrase(texto))
+      .map(nombre => ({ nombre }));
+  }
+
+  if (personas.length === 0 && datos.nombre) {
+    personas = [{
+      nombre: datos.nombre,
+      tipoDocumento: datos.tipoDocumento,
+      numeroDocumento: datos.numeroDocumento,
+      curp: datos.curp,
+    }];
+  }
+
+  // Quien escribe por Airbnb es quien reservó, así que encabeza la lista: es
+  // el "Responsable" del mensaje a seguridad y ahorra un toque.
+  if (datos.remitente && personas.length > 1) {
+    const i = personas.findIndex(p => mismaPersona(p.nombre, datos.remitente));
+    if (i > 0) personas.unshift(...personas.splice(i, 1));
+  }
+
+  const propios = [];
+  if (personas.length === 0) {
+    propios.push('No se reconoció ningún nombre en ese texto — agrégalos a mano.');
+  }
+
+  return {
+    personas,
+    vehiculo: { placas: datos.placas, vehiculo: datos.vehiculo, sinAuto: datos.sinAuto },
+    // Los avisos sobre el nombre solo aplican al caso de una credencial; en un
+    // mensaje escrito estorban, porque ahí los nombres vienen de la lista.
+    avisos: esDocumento
+      ? avisos
+      : [...propios, ...avisos.filter(a => !a.includes('nombre'))],
+    esDocumento,
+  };
 }

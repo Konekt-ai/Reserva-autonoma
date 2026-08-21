@@ -644,3 +644,22 @@ main {
   color: var(--texto-suave);
   opacity: .8;
 }
+
+/* ---------- Separador y bloque de fotos para el grupo ---------- */
+
+.separador {
+  height: 1px;
+  background: var(--borde-suave);
+  margin: 1rem 0;
+}
+
+.titulo-menor {
+  margin: 0 0 .6rem;
+  font-size: .8125rem;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--texto-suave);
+  font-weight: 600;
+}
+
+.bloque-fotos .miniaturas { margin-top: 0; }

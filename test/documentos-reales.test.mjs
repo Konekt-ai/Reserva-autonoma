@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import {
   extraerLicenciaUSA, extraerPlacas, detectarSinAuto, extraerVehiculo,
   extraerRemitenteChat, analizarTexto, capitalizarNombre,
-  nombresDeLista, pareceNombre, formatearVehiculo,
+  nombresDeLista, pareceNombre, formatearVehiculo, procesarMensaje, nombresEnFrase,
 } from '../js/parsers.js';
 
 // Captura del chat de Airbnb: Ana avisa que no llevan coche, con su licencia.
@@ -375,4 +375,109 @@ Placas del auto (escríbelas, ejemplo: ABC-123-D):
 No traemos auto`);
   assert.equal(datos.sinAuto, true);
   assert.equal(datos.placas, '');
+});
+
+// ---------------------------------------------------------------------------
+// Entrada única: un solo pegado resuelve el caso completo
+// ---------------------------------------------------------------------------
+
+test('la respuesta a la plantilla se resuelve de un pegado, sin elegir modo', () => {
+  const r = procesarMensaje(RESPUESTA_A_PLANTILLA);
+  assert.deepEqual(r.personas.map(p => p.nombre),
+    ['Ana Ruiz', 'Luis Ruiz', 'Diego Andres Castillo']);
+  assert.equal(r.vehiculo.placas, 'XKM-482-P');
+  assert.equal(r.vehiculo.vehiculo, 'Nissan Versa 2022');
+  assert.equal(r.vehiculo.sinAuto, false);
+  assert.equal(r.esDocumento, false);
+});
+
+test('una plantilla a medio llenar pasa con lo que haya', () => {
+  const r = procesarMensaje(`Nombre completo de cada persona que ingresa:
+1. Ana Ruiz
+2.
+3.
+
+Placas del auto (escríbelas, ejemplo: ABC-123-D):
+
+Auto (marca, modelo y color):`);
+  assert.deepEqual(r.personas.map(p => p.nombre), ['Ana Ruiz']);
+  assert.equal(r.vehiculo.placas, '', 'no debió copiar la placa del ejemplo');
+  assert.equal(r.vehiculo.sinAuto, false);
+});
+
+test('quien no lleva coche queda marcado sin tocar nada', () => {
+  const r = procesarMensaje(`Nombre completo:
+1. Ana Ruiz
+2. Luis Ruiz
+
+No traemos auto`);
+  assert.equal(r.personas.length, 2);
+  assert.equal(r.vehiculo.sinAuto, true);
+});
+
+test('un mensaje suelto, sin plantilla, también funciona', () => {
+  const r = procesarMensaje('Hola! Somos Ana Ruiz y Luis Ruiz.\nplacas: ABC-123-D');
+  assert.equal(r.vehiculo.placas, 'ABC-123-D');
+  assert.ok(r.personas.length >= 1, `no reconoció a nadie: ${JSON.stringify(r.personas)}`);
+});
+
+test('de una credencial sale una persona con su documento, no renglones sueltos', () => {
+  const r = procesarMensaje(OCR_LICENCIA_PANTALLA);
+  assert.equal(r.esDocumento, true);
+  assert.equal(r.personas.length, 1);
+  assert.equal(r.personas[0].nombre, 'Luis Ruiz');
+  assert.equal(r.personas[0].numeroDocumento, 'B7654321');
+  // "CALIFORNIA DRIVER LICENSE" son puras letras: sin la distinción de origen
+  // se colarían como si fueran huéspedes.
+  assert.ok(!r.personas.some(p => /LICENSE|CALIFORNIA/i.test(p.nombre)));
+});
+
+test('quien escribe por Airbnb encabeza la lista', () => {
+  const r = procesarMensaje(`Luis Ruiz · Booker
+10:31 PM
+Van a entrar:
+Ana Ruiz
+Luis Ruiz
+Diego Andres Castillo`);
+  assert.equal(r.personas[0].nombre, 'Luis Ruiz',
+    `el que reservó debía ir primero: ${r.personas.map(p => p.nombre).join(', ')}`);
+});
+
+test('sin nada reconocible avisa en vez de inventar', () => {
+  const r = procesarMensaje('ok gracias');
+  assert.equal(r.personas.length, 0);
+  assert.ok(r.avisos.some(a => a.includes('No se reconoció')));
+});
+
+test('un mensaje escrito no arrastra los avisos propios de una credencial', () => {
+  const r = procesarMensaje('1. Ana Ruiz\n2. Luis Ruiz\nNo traemos auto');
+  assert.ok(!r.avisos.some(a => a.includes('captúralo a mano')),
+    `aviso fuera de lugar: ${JSON.stringify(r.avisos)}`);
+});
+
+test('reconoce nombres escritos dentro de una frase', () => {
+  const r = procesarMensaje('Hola! Somos Ana Ruiz y Luis Díaz.\nplacas: ABC-123-D');
+  assert.deepEqual(r.personas.map(p => p.nombre), ['Ana Ruiz', 'Luis Díaz']);
+  assert.equal(r.vehiculo.placas, 'ABC-123-D');
+});
+
+test('la frase acepta comas y varias personas', () => {
+  assert.deepEqual(
+    nombresEnFrase('Van a entrar Ana Ruiz, Luis Díaz y Sofia Herrera.'),
+    ['Ana Ruiz', 'Luis Díaz', 'Sofia Herrera'],
+  );
+});
+
+test('NO convierte una frase común en un huésped', () => {
+  // Sin exigir mayúscula inicial, "muy puntuales" acabaría en el mensaje.
+  for (const frase of ['somos muy puntuales', 'vamos a llegar tarde', 'van a ser dos noches']) {
+    assert.deepEqual(nombresEnFrase(frase), [], `inventó a alguien en: "${frase}"`);
+  }
+});
+
+test('la lista en renglones tiene prioridad sobre la frase', () => {
+  const r = procesarMensaje(`Somos tres personas
+1. Ana Ruiz
+2. Luis Díaz`);
+  assert.deepEqual(r.personas.map(p => p.nombre), ['Ana Ruiz', 'Luis Díaz']);
 });
