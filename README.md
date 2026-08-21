@@ -75,14 +75,21 @@ Se necesita [Node.js](https://nodejs.org) instalado (solo para servir los
 archivos; la aplicación en sí es HTML y JavaScript sin compilación).
 
 ```bash
-npm run vendorizar   # una sola vez: descarga el motor de OCR (~35 MB) a vendor/
+npm install          # solo si vas a correr las pruebas de navegador
 npm start            # abre http://localhost:5173
 ```
 
-El paso `vendorizar` es lo que permite que la aplicación funcione sin internet
-y sin contactar ningún servidor externo. Si se omite, la primera lectura
-descarga el motor desde un CDN público y el service worker lo guarda en caché
-para los usos siguientes.
+El motor de OCR ya viene en `vendor/` dentro del repositorio, así que no hay
+nada que descargar. Si alguna vez hay que actualizarlo o cambiar de idioma:
+
+```bash
+npm run vendorizar   # rehace vendor/ (~25 MB)
+```
+
+Tener el motor versionado es lo que permite que la aplicación funcione sin
+internet y sin contactar ningún servidor externo. Si `vendor/` faltara, la
+primera lectura lo descargaría de un CDN público y el service worker lo
+guardaría en caché para los usos siguientes.
 
 > **No abras `index.html` con doble clic.** El protocolo `file://` impide que
 > funcionen los módulos de JavaScript y el OCR. Usa siempre `npm start`.
@@ -97,6 +104,52 @@ Para usarla fuera de la red local, publica la carpeta en cualquier hosting
 estático (GitHub Pages, Netlify, Cloudflare Pages — todos con plan gratuito).
 Sigue sin haber backend: el hosting solo entrega archivos, el procesamiento
 sigue siendo local.
+
+---
+
+## Publicarla en Vercel
+
+El proyecto es estático: no hay build ni backend. Vercel solo entrega archivos,
+y el procesamiento sigue ocurriendo en el dispositivo de quien la usa.
+
+1. En [vercel.com](https://vercel.com) → **Add New… → Project** e importa el
+   repositorio de GitHub.
+2. En **Framework Preset** elige **Other**. Deja Build Command e Install Command
+   vacíos y Output Directory en `.` — [vercel.json](vercel.json) ya lo declara,
+   así que normalmente lo detecta solo.
+3. **Deploy.**
+
+Si el repositorio es privado (que es como debe estar, porque el historial tocó
+datos de huéspedes), Vercel pide autorizar su aplicación de GitHub para leerlo.
+Eso es normal y no lo hace público.
+
+### Qué configura `vercel.json`
+
+- **`sw.js` e `index.html` sin caché.** Es lo que permite que una versión nueva
+  llegue a quien ya tiene la app instalada. Sin esto, el service worker seguiría
+  sirviendo la versión vieja para siempre.
+- **`vendor/` cacheado un año como inmutable.** Son 25 MB de binarios que nunca
+  cambian; se descargan una vez y ya.
+- **Encabezados de seguridad**: `nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: no-referrer` y un `Permissions-Policy` que deja la cámara
+  disponible para tomar la foto y apaga micrófono y ubicación.
+
+### Después del primer despliegue, comprueba dos cosas
+
+1. **Que el OCR funcione**, leyendo una identificación cualquiera. Si falla al
+   cargar el motor, revisa en la pestaña Red del navegador que
+   `/vendor/lang/spa.traineddata.gz` responda `200` y **sin** encabezado
+   `Content-Encoding`.
+2. **Que se instale en el celular**: abrir la URL y usar «Añadir a pantalla de
+   inicio». Con HTTPS —que Vercel da por omisión— también funcionan el botón de
+   copiar y el modo sin conexión, que sobre `http://` quedan limitados.
+
+### Nota sobre privacidad al publicarla
+
+La URL de Vercel es pública para quien la conozca. La app no expone datos por sí
+sola —todo vive en el navegador de cada quien— pero cualquiera con el enlace
+puede abrirla y usarla. Si eso incomoda, Vercel permite protegerla con
+contraseña en Settings → Deployment Protection.
 
 ---
 
@@ -131,12 +184,17 @@ Medida sobre siete fotos reales de huéspedes — comprimidas por WhatsApp, de
 
 | Dato | Resultado |
 |---|---|
-| Número de documento correcto | 6 / 6 |
-| Nombre completo y exacto | 4 / 7 |
+| Número de documento correcto | 5 / 6 |
+| Nombre completo y exacto | 3 / 7 |
 | Nombre exacto o parcial | 6 / 7 |
 | Nombre **incorrecto** | 0 / 7 |
 | Placas inventadas | 0 / 7 |
 | "No traen auto" detectado | 7 / 7 |
+
+Estas cifras son con el motor en español solamente. Agregar inglés sube un
+nombre de parcial a exacto y un documento más, pero cuesta 10 MB de descarga y
+más del doble de tiempo en cada lectura — ver `IDIOMAS` en
+[js/ocr.js](js/ocr.js) para el detalle y cómo revertirlo.
 
 Las dos últimas filas importan más que las demás. **La herramienta prefiere
 dejar un campo vacío antes que llenarlo con algo que no leyó bien**, porque un
@@ -199,17 +257,36 @@ hay OCR de por medio ni nada que pueda leerse mal.
 
 ## La plantilla de Airbnb
 
-La precisión de la herramienta depende de cómo esté redactada la respuesta
-automática que se le manda al huésped. Esta versión pide los datos en un
-formato que se pega de una sola vez:
+La precisión depende mucho de cómo esté redactada la respuesta automática que
+se le manda al huésped. La clienta observó, con razón, que **para el huésped es
+más fácil mandar solo las fotos** — entre más se le pida, menos responde. Así
+que esta versión mantiene la foto como lo principal y pide por escrito
+únicamente lo que de verdad necesita serlo:
 
 ```
 Hola {Guest first name}, gracias por tu reserva.
 
-Para poder registrarte con seguridad del edificio y agilizar tu entrada,
-te pido estos datos antes de tu llegada. Puedes responder copiando estas
-líneas y llenándolas:
+Para tu acceso al edificio necesito:
 
+1) Foto de identificación de cada persona que se hospeda
+2) Nombre completo de cada una
+3) Placas del auto, escritas (ejemplo: ABC-123-D).
+   Si no traen auto, avísame.
+
+Estos datos se comparten únicamente con el personal de seguridad del
+edificio para autorizar tu acceso, y se eliminan después de tu estancia.
+```
+
+Las placas son el punto clave: fotografiadas fallan seguido, escritas se leen
+prácticamente siempre. El último párrafo es el aviso de privacidad que pide la
+ley para tratar identificaciones.
+
+### Si se prefiere una respuesta más estructurada
+
+Cuando el huésped es cooperativo, una plantilla en forma de formulario deja los
+datos listos para pegar de un solo golpe:
+
+```
 Nombre completo de cada persona que ingresa:
 1.
 2.
@@ -218,28 +295,20 @@ Nombre completo de cada persona que ingresa:
 Placas del auto (escríbelas, ejemplo: ABC-123-D):
 
 Auto (marca, modelo y color):
-
-Si no traen auto, solo responde "No traemos auto".
-
-Adjunta también una foto de identificación de cada persona.
-
-Estos datos se comparten únicamente con el personal de seguridad del
-edificio para autorizar tu acceso, y se eliminan después de tu estancia.
 ```
 
-Dos detalles que importan:
+La lista numerada se convierte en personas con el botón *Solo son nombres*.
 
-- **El ejemplo de placa no envenena el dato.** Los huéspedes suelen responder
-  citando la plantilla completa, así que el `ABC-123-D` viaja en el texto.
-  El analizador reconoce que va precedido de «ejemplo:» y lo ignora; si el
-  huésped devuelve la plantilla sin llenar, el campo queda vacío en vez de
-  copiar la muestra. Hay pruebas de regresión para esto en
-  [test/documentos-reales.test.mjs](test/documentos-reales.test.mjs).
-- **La lista numerada se convierte en personas** con el botón *Solo son
-  nombres*, sin tocar nada más.
+**El ejemplo de placa no envenena el dato.** Los huéspedes suelen responder
+citando la plantilla completa, así que el `ABC-123-D` viaja en el texto. El
+analizador reconoce que va precedido de «ejemplo:» y lo ignora; si el huésped
+devuelve la plantilla sin llenar, el campo queda vacío en vez de copiar la
+muestra. Hay pruebas de regresión para esto en
+[test/documentos-reales.test.mjs](test/documentos-reales.test.mjs).
 
 También conviene **programar la plantilla** para que salga sola al confirmarse
 la reserva, en vez de mandarla a mano.
+
 
 ---
 

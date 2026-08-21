@@ -29,10 +29,12 @@ const ARCHIVOS = [
   { url: `https://cdn.jsdelivr.net/npm/tesseract.js-core@${VERSION_CORE}/tesseract-core-lstm.wasm.js`, destino: 'tesseract-core-lstm.wasm.js' },
   { url: `https://cdn.jsdelivr.net/npm/tesseract.js-core@${VERSION_CORE}/tesseract-core-simd-lstm.wasm.js`, destino: 'tesseract-core-simd-lstm.wasm.js' },
 
-  // Modelos de idioma. Español para las credenciales; inglés para la MRZ de
-  // pasaportes y para cadenas alfanuméricas como las placas.
+  // Modelos de idioma. Solo español: agregar inglés sube la descarga de 8 a
+  // 18 MB y casi duplica el tiempo de lectura, a cambio de casi nada de
+  // precisión (ver el comentario de IDIOMAS en js/ocr.js). Si algún día hace
+  // falta, se descomenta la línea del inglés y se ajusta IDIOMAS allá.
   { url: `https://tessdata.projectnaptha.com/${VERSION_TESSDATA}/spa.traineddata.gz`, destino: 'lang/spa.traineddata.gz' },
-  { url: `https://tessdata.projectnaptha.com/${VERSION_TESSDATA}/eng.traineddata.gz`, destino: 'lang/eng.traineddata.gz' },
+  // { url: `https://tessdata.projectnaptha.com/${VERSION_TESSDATA}/eng.traineddata.gz`, destino: 'lang/eng.traineddata.gz' },
 ];
 
 const enMB = bytes => (bytes / 1024 / 1024).toFixed(1);

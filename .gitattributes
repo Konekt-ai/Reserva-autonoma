@@ -1,0 +1,12 @@
+# Normaliza los finales de linea del codigo propio.
+* text=auto eol=lf
+
+# vendor/ son artefactos de terceros: se guardan byte por byte. Cualquier
+# conversion de finales de linea sobre el wasm o los modelos de idioma los
+# corrompe de forma silenciosa y dificil de diagnosticar.
+vendor/** -text
+
+*.gz  binary
+*.png binary
+*.jpg binary
+*.jpeg binary

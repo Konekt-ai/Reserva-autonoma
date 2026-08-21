@@ -9,6 +9,20 @@ const TAMANO_MAXIMO = 1800; // px en el lado largo; más allá el OCR no mejora 
 
 const CDN_TESSERACT = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
 
+/**
+ * Idiomas del motor. Cada uno son varios MB que se descargan la primera vez,
+ * y en el celular de la clienta eso se paga en datos y en espera.
+ *
+ * Medido contra las siete fotos reales de huéspedes: agregar inglés sube la
+ * descarga de 8 a 18 MB y casi duplica el tiempo, a cambio de un solo número de
+ * documento más — un dato que ni siquiera va en el mensaje a seguridad. Los
+ * nombres se leen igual de bien con español solo, porque son las mismas letras.
+ *
+ * Si algún día llegan sobre todo pasaportes extranjeros, cambiar a
+ * ['spa', 'eng'] aquí y volver a correr `npm run vendorizar`.
+ */
+const IDIOMAS = ['spa'];
+
 let workerPromise = null;
 let usandoLocal = false;
 
@@ -80,9 +94,7 @@ export async function obtenerWorker(alProgresar = () => {}) {
       opciones.langPath = 'vendor/lang';
     }
 
-    // Español primero: las credenciales mexicanas están en español, pero el
-    // inglés ayuda con la MRZ de pasaportes y con placas alfanuméricas.
-    return Tesseract.createWorker(['spa', 'eng'], 1, opciones);
+    return Tesseract.createWorker(IDIOMAS, 1, opciones);
   })();
 
   return workerPromise;

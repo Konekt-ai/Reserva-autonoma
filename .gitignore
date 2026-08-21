@@ -1,7 +1,9 @@
 node_modules/
 
-# El motor de OCR (35 MB) se reconstruye con: npm run vendorizar
-vendor/
+# vendor/ SI se versiona: son los binarios del motor de OCR (~25 MB, estaticos).
+# Tenerlos en el repositorio es lo que hace que el despliegue sea
+# autocontenido y no dependa de ningun CDN externo. Se reconstruyen con
+# `npm run vendorizar` si alguna vez hay que actualizarlos.
 
 # Identificaciones reales de huespedes. NUNCA deben entrar al repositorio:
 # son datos personales de terceros y quedarian en el historial para siempre.

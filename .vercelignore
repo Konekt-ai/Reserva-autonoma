@@ -1,0 +1,11 @@
+# Lo que no tiene por que viajar al despliegue.
+node_modules/
+test/
+scripts/
+.git/
+
+# Identificaciones reales de huespedes: nunca deben salir de la maquina.
+ejemplo reales/
+ejemplos/
+*.jpeg
+*.jpg
